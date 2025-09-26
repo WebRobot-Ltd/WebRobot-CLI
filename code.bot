@@ -1,0 +1,63 @@
+FETCH WHERE ACTIONS ARE (
+            (
+            action = VISIT WITH ARGS(url = (('https://www.paginegialle.it/')))
+            )
+            THEN
+            (
+            action = TEXTINPUT WITH ARGS( selector = (('input[id="cosa"]')) AND value = (('') + $(cosa)))
+            )
+            THEN
+            (
+            action = CLICK WITH ARGS ( selector = (('span[class="icon icon--close_narrow icon--18"]')))
+            )
+            THEN
+            (
+            action = TEXTINPUT WITH ARGS( selector = (('input[id="dove"]')) AND value = (('') + $(dove)))
+            )
+            THEN
+            (
+            action = CLICK WITH ARGS( selector = (('button[id="searchSubmit"]')))
+            )
+            )
+            THEN JOIN (
+            (
+            PIVOTED(('h2[itemprop="name"] a')).text AS name
+            )
+            THEN
+            (
+            PIVOTED(('span[itemprop="streetAddress"]')).text AS adress
+            )
+            THEN
+            (
+            PIVOTED(('span[itemprop="postalCode"]')).text AS postalCode
+            )
+            THEN
+            (
+            PIVOTED(('span[itemprop="addressLocality"]')).text AS addressLocality
+            )
+            THEN
+            (
+            PIVOTED(('span[itemprop="addressRegion"]')).text AS addressRegion
+            )
+            THEN
+            (
+            PIVOTED(('p[itemprop="description"]')).text AS description
+            )
+            THEN
+            (
+            PIVOTED(('div[itemprop="telephone"]')).text AS telephone
+            )
+            )
+            WHERE (
+            splitter = CURRENT(('div[class="search-listing"] section'))
+            AND ACTIONS ARE(
+            (
+            action = WGET WITH ARGS(url = PIVOTED((('a'))).attr((('href'))))
+            )
+            )
+            )
+            THEN SELECT (
+            (
+            CURRENT(('title')).text AS m
+            )
+            )

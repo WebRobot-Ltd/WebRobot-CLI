@@ -1,0 +1,776 @@
+<projects>
+<project>
+<queries>
+    <concepts>
+        <concept id="1">
+            <pages>
+                <page id="1">
+
+                </page>
+            </pages>
+        </concept>
+    </concepts>
+    <datasets>
+        <dataset local="inputs/farmacie.csv" id="paginegialle" ref="s3://webrobotsparkjob/input/farmacie.csv"
+                 output="s3://webrobotsparkjob/output/paginegialle1"/>
+
+        <dataset local="/inputs/comuni.csv" id="farmacie" ref="s3://webrobotsparkjob/input/comuni.csv"
+                 output="s3://webrobotsparkjob/output/farmacie"/>
+
+    </datasets>
+    <jobs>
+        <job>
+
+        </job>
+    </jobs>
+    <scripts>
+
+    </scripts>
+
+    <query id="paginegiallelite1" datasetid="paginegialle">
+
+        <code>
+            FETCH WHERE ACTIONS ARE (
+            (
+            action = VISIT WITH ARGS(url = (('https://www.paginegialle.it/')))
+            )
+            THEN
+            (
+            action = TEXTINPUT WITH ARGS( selector = (('input[id="cosa"]')) AND value = (('') + $(cosa)))
+            )
+            THEN
+            (
+            action = CLICK WITH ARGS ( selector = (('span[class="icon icon--close_narrow icon--18"]')))
+            )
+            THEN
+            (
+            action = TEXTINPUT WITH ARGS( selector = (('input[id="dove"]')) AND value = (('') + $(dove)))
+            )
+            THEN
+            (
+            action = CLICK WITH ARGS( selector = (('button[id="searchSubmit"]')))
+            )
+            )
+            THEN JOIN (
+            (
+            PIVOTED(('h2[itemprop="name"] a')).text AS name
+            )
+            THEN
+            (
+            PIVOTED(('span[itemprop="streetAddress"]')).text AS adress
+            )
+            THEN
+            (
+            PIVOTED(('span[itemprop="postalCode"]')).text AS postalCode
+            )
+            THEN
+            (
+            PIVOTED(('span[itemprop="addressLocality"]')).text AS addressLocality
+            )
+            THEN
+            (
+            PIVOTED(('span[itemprop="addressRegion"]')).text AS addressRegion
+            )
+            THEN
+            (
+            PIVOTED(('p[itemprop="description"]')).text AS description
+            )
+            THEN
+            (
+            PIVOTED(('div[itemprop="telephone"]')).text AS telephone
+            )
+            )
+            WHERE (
+            splitter = CURRENT(('div[class="search-listing"] section'))
+            AND ACTIONS ARE(
+            (
+            action = WGET WITH ARGS(url = PIVOTED((('a'))).attr((('href'))))
+            )
+            )
+            )
+            THEN SELECT (
+            (
+            CURRENT(('title')).text AS m
+            )
+            )
+        </code>
+    </query>
+
+
+
+    <query id="paginetest" datasetid="paginegialle">
+
+        <code>
+            FETCH WHERE ACTIONS ARE (
+            (
+            action = VISIT WITH ARGS(url = (('https://www.paginegialle.it/')))
+            )
+            THEN
+            (
+            action = TEXTINPUT WITH ARGS( selector = (('input[id="cosa"]')) AND value = (('') + $(cosa)))
+            )
+            THEN
+            (
+            action = CLICK WITH ARGS ( selector = (('span[class="icon icon--close_narrow icon--18"]')))
+            )
+            THEN
+            (
+            action = RANDOMDELAY WITH ARGS(min = (('1')) AND max = (('2')))
+            )
+            THEN
+            (
+            action = TEXTINPUT WITH ARGS( selector = (('input[id="dove"]')) AND value = (('') + $(dove)))
+            )
+            THEN
+            (
+            action = CLICK WITH ARGS( selector = (('button[id="searchSubmit"]')))
+            )
+            THEN
+            (
+            action = RANDOMDELAY WITH ARGS(min = (('2')) AND max = (('3')))
+            )
+            )
+            THEN EXPLORE
+            (
+            (
+            PIVOTED(('a')).attr((('data-pageurl'))) AS page_url
+            )
+            )
+            WHERE
+            (
+            splitter = CURRENT(('div[class="my-24  text-center nextPageButton"]'))
+            AND ACTIONS ARE
+            (
+            (
+            action = VISIT WITH ARGS(url = PIVOTED(('a')).attr((('data-pageurl'))) )
+            )
+            )
+            )
+        </code>
+    </query>
+
+
+    <query id="paginegialleexplore" datasetid="paginegialle">
+
+        <code>
+            <code>
+                FETCH WHERE ACTIONS ARE (
+                (
+                action = VISIT WITH ARGS(url = (('https://www.paginegialle.it/ricerca/farmacie/Rimini/p-3')))
+                )
+                )
+                THEN EXPLORE
+                (
+                ( PIVOTED(('a')).attr((('data-pageurl')))) AS page_url
+                )
+                WHERE
+                (
+                splitter = CURRENT(('div[class*="nextPageButton"]'))
+                AND ACTIONS ARE
+                (
+                (
+                action = VISIT WITH ARGS(
+                url = interop(('https://www.paginegialle.it') + $( PIVOTED(('a')).attr((('data-pageurl')))))
+                )
+                )
+                )
+                )
+
+            </code>
+        </code>
+    </query>
+
+
+    <query id="paginegiallelitenoemail" datasetid="paginegialle1">
+
+        <code>
+            FETCH WHERE ACTIONS ARE (
+            (
+            action = VISIT WITH ARGS(url = (('https://www.paginegialle.it/')))
+            )
+            THEN
+            (
+            action = TEXTINPUT WITH ARGS( selector = (('input[id="cosa"]')) AND value = (('') + $(cosa)))
+            )
+            THEN
+            (
+            action = CLICK WITH ARGS ( selector = (('span[class="icon icon--close_narrow icon--18"]')))
+            )
+            THEN
+            (
+            action = RANDOMDELAY WITH ARGS(min = (('1')) AND max = (('2')))
+            )
+            THEN
+            (
+            action = TEXTINPUT WITH ARGS( selector = (('input[id="dove"]')) AND value = (('') + $(dove)))
+            )
+            THEN
+            (
+            action = CLICK WITH ARGS( selector = (('button[id="searchSubmit"]')))
+            )
+            THEN
+            (
+            action = RANDOMDELAY WITH ARGS(min = (('2')) AND max = (('3')))
+            )
+            )
+            THEN EXPLORE
+            (
+            ( PIVOTED(('a')).attr((('data-pageurl')))) AS page_url
+            )
+            WHERE
+            (
+            splitter = CURRENT(('div[class="my-24  text-center nextPageButton"]'))
+            AND ACTIONS ARE
+            (
+            (
+            action = VISIT WITH ARGS(
+            url = interop(('https://www.paginegialle.it') + $( PIVOTED(('a')).attr((('data-pageurl')))))
+            )
+            )
+            )
+            )
+            THEN WGETJOIN WHERE (
+            splitter = CURRENT(('div[class="search-listing"] section h2 a'))
+            )
+            THEN SELECT (
+            (
+            CURRENT(('h1')).text AS title
+            )
+            THEN
+            (
+            CURRENT(('div[class="company__address"]')).text AS company_address
+            )
+            THEN
+            (
+            CURRENT(('div[class="phone-numbers"] [id^="mainPhoneNumber_desk"] div:nth-child(2')).text AS phone_number
+            )
+            THEN
+            (
+            CURRENT(('div[class="phone-numbers"] [id^="otherPhoneNumbers_desk"] div:nth-child(2')).text AS other_phone_number
+            )
+            THEN
+            (
+            CURRENT(('div[class="read-more__content-inner"]')).text AS description
+            )
+            THEN
+            (
+            CURRENT(('div[class="card card--rounded"] div[class="my-22"]:nth-child(1)')).text AS piva
+            )
+            THEN
+            (
+            CURRENT(('div[class="card card--rounded"] div[class="my-22"]:nth-child(2)')).text AS legal_info
+            )
+            THEN
+            (
+            CURRENT(('div[class="card card--rounded"] div[class="my-22"]:nth-child(3)')).text AS altri_marchi
+            )
+            THEN
+            (
+            CURRENT(('div[class="card__body ln-4"] div[class="my-18"]:nth-child(1)')).text AS activities
+            )
+            THEN
+            (
+            CURRENT(('div[class="card__body ln-4"] div[class="my-18"]:nth-child(2)')).text AS analisi
+            )
+            THEN
+            (
+            CURRENT(('div[class="card__body ln-4"] div[class="my-18"]:nth-child(3)')).text AS products
+            )
+            THEN
+            (
+            CURRENT(('div[class="card__body ln-4"] div[class="my-18"]:nth-child(4)')).text AS services
+            )
+            )
+            THEN WGETJOIN WHERE (
+            splitter = CURRENT(('a[data-pag="www"],a[data-pag="Sito Personalizzato]'))
+            )
+            AND PARAMETERS ARE
+            (
+            flattenJoinType = (('LeftOuter'))
+            )
+        </code>
+    </query>
+
+
+    <query id="paginegiallelitetest" datasetid="paginegialle">
+
+        <code>
+            FETCH WHERE ACTIONS ARE (
+            (
+            action = VISIT WITH ARGS(url = (('https://www.paginegialle.it/')))
+            )
+            THEN
+            (
+            action = TEXTINPUT WITH ARGS( selector = (('input[id="cosa"]')) AND value = (('') + $(cosa)))
+            )
+            THEN
+            (
+            action = CLICK WITH ARGS ( selector = (('span[class="icon icon--close_narrow icon--18"]')))
+            )
+            THEN
+            (
+            action = RANDOMDELAY WITH ARGS(min = (('1')) AND max = (('2')))
+            )
+            THEN
+            (
+            action = TEXTINPUT WITH ARGS( selector = (('input[id="dove"]')) AND value = (('') + $(dove)))
+            )
+            THEN
+            (
+            action = CLICK WITH ARGS( selector = (('button[id="searchSubmit"]')))
+            )
+            THEN
+            (
+            action = RANDOMDELAY WITH ARGS(min = (('2')) AND max = (('3')))
+            )
+            )
+            THEN EXPLORE
+            (
+            ( PIVOTED(('a')).attr((('data-pageurl')))) AS page_url
+            )
+            WHERE
+            (
+            splitter = CURRENT(('div[class="my-24  text-center nextPageButton"]'))
+            AND ACTIONS ARE
+            (
+            (
+            action = VISIT WITH ARGS(
+            url = interop(('https://www.paginegialle.it') + $( PIVOTED(('a')).attr((('data-pageurl')))))
+            )
+            )
+            )
+            )
+            THEN WGETJOIN WHERE (
+            splitter = CURRENT(('div[class="search-listing"] section h2 a'))
+            )
+            THEN SELECT (
+            (
+            CURRENT(('h1')).text AS title
+            )
+            THEN
+            (
+            CURRENT(('div[class="company__address"]')).text AS company_address
+            )
+            THEN
+            (
+            CURRENT(('div[class="phone-numbers"] [id^="mainPhoneNumber_desk"] div:nth-child(2')).text AS phone_number
+            )
+            THEN
+            (
+            CURRENT(('div[class="phone-numbers"] [id^="otherPhoneNumbers_desk"] div:nth-child(2')).text AS other_phone_number
+            )
+            THEN
+            (
+            CURRENT(('div[class="read-more__content-inner"]')).text AS description
+            )
+            THEN
+            (
+            CURRENT(('div[class="card card--rounded"] div[class="my-22"]:nth-child(1)')).text AS piva
+            )
+            THEN
+            (
+            CURRENT(('div[class="card card--rounded"] div[class="my-22"]:nth-child(2)')).text AS legal_info
+            )
+            THEN
+            (
+            CURRENT(('div[class="card card--rounded"] div[class="my-22"]:nth-child(3)')).text AS altri_marchi
+            )
+            THEN
+            (
+            CURRENT(('div[class="card__body ln-4"] div[class="my-18"]:nth-child(1)')).text AS activities
+            )
+            THEN
+            (
+            CURRENT(('div[class="card__body ln-4"] div[class="my-18"]:nth-child(2)')).text AS analisi
+            )
+            THEN
+            (
+            CURRENT(('div[class="card__body ln-4"] div[class="my-18"]:nth-child(3)')).text AS products
+            )
+            THEN
+            (
+            CURRENT(('div[class="card__body ln-4"] div[class="my-18"]:nth-child(4)')).text AS services
+            )
+            )
+            THEN WGETJOIN WHERE (
+            splitter = CURRENT(('a[data-pag="www"],a[data-pag="Sito Personalizzato]'))
+            )
+            AND PARAMETERS ARE
+            (
+            flattenJoinType = (('LeftOuter'))
+            )
+            THEN SELECT (
+            (
+            CURRENT(('body')).allemail AS m_target
+            )
+            )
+            THEN WGETEXPLORE WHERE (
+            splitter = CURRENT(('body')).findallinternal((('a[href*="contatti"]')))
+            )
+            AND PARAMETERS ARE
+            (
+            maxDepth = (('1'))
+            )
+            THEN SELECT (
+            (
+            CURRENT(('body')).allemail AS m1_target
+            )
+            )
+        </code>
+    </query>
+
+
+    <query id="farmacie" datasetid="farmacie">
+
+        <code>
+            FETCH WHERE ACTIONS ARE (
+            (
+            action = VISIT WITH ARGS(url = (('https://www.paginegialle.it/')))
+            )
+            THEN
+            (
+            action = TEXTINPUT WITH ARGS( selector = (('input[id="cosa"]')) AND value = (('farmacie')))
+            )
+            THEN
+            (
+            action = CLICK WITH ARGS ( selector = (('span[class="icon icon--close_narrow icon--18"]')))
+            )
+            THEN
+            (
+            action = RANDOMDELAY WITH ARGS(min = (('1')) AND max = (('2')))
+            )
+            THEN
+            (
+            action = TEXTINPUT WITH ARGS( selector = (('input[id="dove"]')) AND value = (('') + $(dove)))
+            )
+            THEN
+            (
+            action = CLICK WITH ARGS( selector = (('button[id="searchSubmit"]')))
+            )
+            THEN
+            (
+            action = RANDOMDELAY WITH ARGS(min = (('2')) AND max = (('3')))
+            )
+            )
+            THEN EXPLORE
+            (
+            ( PIVOTED(('a')).attr((('data-pageurl')))) AS page_url
+            )
+            WHERE
+            (
+            splitter = CURRENT(('div[class="my-24  text-center nextPageButton"]'))
+            AND ACTIONS ARE
+            (
+            (
+            action = VISIT WITH ARGS(
+            url = interop(('https://www.paginegialle.it') + $( PIVOTED(('a')).attr((('data-pageurl')))))
+            )
+            )
+            )
+            )
+            THEN WGETJOIN WHERE (
+            splitter = CURRENT(('div[class="search-listing"] section h2 a'))
+            )
+            THEN SELECT (
+            (
+            CURRENT(('h1')).text AS title
+            )
+            THEN
+            (
+            CURRENT(('div[class="company__address"]')).text AS company_address
+            )
+            THEN
+            (
+            CURRENT(('div[class="phone-numbers"] [id^="mainPhoneNumber_desk"] div:nth-child(2')).text AS phone_number
+            )
+            THEN
+            (
+            CURRENT(('div[class="phone-numbers"] [id^="otherPhoneNumbers_desk"] div:nth-child(2')).text AS other_phone_number
+            )
+            THEN
+            (
+            CURRENT(('div[class="read-more__content-inner"]')).text AS description
+            )
+            THEN
+            (
+            CURRENT(('div[class="card card--rounded"] div[class="my-22"]:nth-child(1)')).text AS piva
+            )
+            THEN
+            (
+            CURRENT(('div[class="card card--rounded"] div[class="my-22"]:nth-child(2)')).text AS legal_info
+            )
+            THEN
+            (
+            CURRENT(('div[class="card card--rounded"] div[class="my-22"]:nth-child(3)')).text AS altri_marchi
+            )
+            THEN
+            (
+            CURRENT(('div[class="card__body ln-4"] div[class="my-18"]:nth-child(1)')).text AS activities
+            )
+            THEN
+            (
+            CURRENT(('div[class="card__body ln-4"] div[class="my-18"]:nth-child(2)')).text AS analisi
+            )
+            THEN
+            (
+            CURRENT(('div[class="card__body ln-4"] div[class="my-18"]:nth-child(3)')).text AS products
+            )
+            THEN
+            (
+            CURRENT(('div[class="card__body ln-4"] div[class="my-18"]:nth-child(4)')).text AS services
+            )
+            )
+            THEN WGETJOIN WHERE (
+            splitter = CURRENT(('a[data-pag="www"],a[data-pag="Sito Personalizzato]'))
+            )
+            AND PARAMETERS ARE
+            (
+            flattenJoinType = (('LeftOuter'))
+            )
+            THEN SELECT (
+            (
+            CURRENT(('body')).allemail AS m_target
+            )
+            )
+            THEN WGETEXPLORE WHERE (
+            splitter = CURRENT(('body')).findallinternal((('a[href*="contatti"]')))
+            )
+            AND PARAMETERS ARE
+            (
+            maxDepth = (('1'))
+            )
+            THEN SELECT (
+            (
+            CURRENT(('body')).allemail AS m1_target
+            )
+            )
+        </code>
+    </query>
+
+    <query id="paginegiallelite" datasetid="paginegialle">
+
+        <code>
+            FETCH WHERE ACTIONS ARE (
+            (
+            action = VISIT WITH ARGS(url = (('https://www.paginegialle.it/')))
+            )
+            THEN
+            (
+            action = TEXTINPUT WITH ARGS( selector = (('input[id="cosa"]')) AND value = (('') + $(cosa)))
+            )
+            THEN
+            (
+            action = CLICK WITH ARGS ( selector = (('span[class="icon icon--close_narrow icon--18"]')))
+            )
+            THEN
+            (
+            action = RANDOMDELAY WITH ARGS(min = (('1')) AND max = (('2')))
+            )
+            THEN
+            (
+            action = TEXTINPUT WITH ARGS( selector = (('input[id="dove"]')) AND value = (('') + $(dove)))
+            )
+            THEN
+            (
+            action = CLICK WITH ARGS( selector = (('button[id="searchSubmit"]')))
+            )
+            THEN
+            (
+            action = RANDOMDELAY WITH ARGS(min = (('2')) AND max = (('3')))
+            )
+            )
+            THEN EXPLORE
+            (
+            ( PIVOTED(('a')).attr((('data-pageurl')))) AS page_url
+            )
+            WHERE
+            (
+            splitter = CURRENT(('div[class="my-24  text-center nextPageButton"]'))
+            AND ACTIONS ARE
+            (
+            (
+            action = VISIT WITH ARGS(
+            url = interop(('https://www.paginegialle.it') + $( PIVOTED(('a')).attr((('data-pageurl')))))
+            )
+            )
+            )
+            )
+            THEN WGETJOIN WHERE (
+            splitter = CURRENT(('div[class="search-listing"] section h2 a'))
+            )
+            THEN SELECT (
+            (
+            CURRENT(('h1')).text AS title
+            )
+            THEN
+            (
+            CURRENT(('div[class="company__address"]')).text AS company_address
+            )
+            THEN
+            (
+            CURRENT(('div[class="phone-numbers"] [id^="mainPhoneNumber_desk"] div:nth-child(2')).text AS phone_number
+            )
+            THEN
+            (
+            CURRENT(('div[class="phone-numbers"] [id^="otherPhoneNumbers_desk"] div:nth-child(2')).text AS other_phone_number
+            )
+            THEN
+            (
+            CURRENT(('div[class="read-more__content-inner"]')).text AS description
+            )
+            THEN
+            (
+            CURRENT(('div[class="card card--rounded"] div[class="my-22"]:nth-child(1)')).text AS piva
+            )
+            THEN
+            (
+            CURRENT(('div[class="card card--rounded"] div[class="my-22"]:nth-child(2)')).text AS legal_info
+            )
+            THEN
+            (
+            CURRENT(('div[class="card card--rounded"] div[class="my-22"]:nth-child(3)')).text AS altri_marchi
+            )
+            THEN
+            (
+            CURRENT(('div[class="card__body ln-4"] div[class="my-18"]:nth-child(1)')).text AS activities
+            )
+            THEN
+            (
+            CURRENT(('div[class="card__body ln-4"] div[class="my-18"]:nth-child(2)')).text AS analisi
+            )
+            THEN
+            (
+            CURRENT(('div[class="card__body ln-4"] div[class="my-18"]:nth-child(3)')).text AS products
+            )
+            THEN
+            (
+            CURRENT(('div[class="card__body ln-4"] div[class="my-18"]:nth-child(4)')).text AS services
+            )
+            )
+            THEN WGETJOIN WHERE (
+            splitter = CURRENT(('a[data-pag="www"],a[data-pag="Sito Personalizzato]'))
+            )
+            AND PARAMETERS ARE
+            (
+            flattenJoinType = (('LeftOuter'))
+            )
+            THEN SELECT (
+            (
+            CURRENT(('body')).allemail AS m_target
+            )
+            )
+            THEN WGETEXPLORE WHERE (
+            splitter = CURRENT(('body')).findallinternal((('a[href*="contatti"]')))
+            )
+            AND PARAMETERS ARE
+            (
+            maxDepth = (('1'))
+            )
+            THEN SELECT (
+            (
+            CURRENT(('body')).allemail AS m1_target
+            )
+            )
+        </code>
+    </query>
+
+    <query id="paginegialle1" datasetid="paginegialle">
+
+        <code>
+            FETCH WHERE ACTIONS ARE (
+            (
+            action = VISIT WITH ARGS(url = (('https://www.paginegialle.it/')))
+            )
+            THEN
+            (
+            action = TEXTINPUT WITH ARGS(selector = (('input[id="cosa"]')) AND value = (('') + $(cosa)))
+            )
+            THEN
+            (
+            action = TEXTINPUT WITH ARGS( selector = (('input[id="dove"]')) AND value = (('') + $(dove)))
+            )
+            THEN
+            (
+            action = CLICK WITH ARGS(selector = (('button[id="searchSubmit"]')))
+            )
+            )
+            THEN SELECT (
+            (
+            CURRENT(('body')).code AS code
+            )
+            )
+        </code>
+    </query>
+
+    <query id="paginegialle" datasetid="paginegialle">
+
+        <code>
+            FETCH WHERE ACTIONS ARE (
+            (
+            action = VISIT WITH ARGS(url = (('https://www.paginegialle.it/')))
+            )
+            THEN
+            (
+            action = TEXTINPUT WITH ARGS( selector = (('input[id="cosa"]')) AND value = (('') + $(cosa)))
+            )
+            THEN
+            (
+            action = TEXTINPUT WITH ARGS( selector = (('input[id="dove"]')) AND value = (('') + $(dove)))
+            )
+            THEN
+            (
+            action = CLICK WITH ARGS( selector = (('button[id="searchSubmit"]')))
+            )
+            )
+            THEN FLATSELECT (
+            (
+            PIVOTED(('h2[itemprop="name"] a')).text AS name
+            )
+            THEN
+            (
+            PIVOTED(('span[itemprop="streetAddress"]')).text AS adress
+            )
+            THEN
+            (
+            PIVOTED(('span[itemprop="postalCode"]')).text AS postalCode
+            )
+            THEN
+            (
+            PIVOTED(('span[itemprop="addressLocality"]')).text AS addressLocality
+            )
+            THEN
+            (
+            PIVOTED(('span[itemprop="addressRegion"]')).text AS addressRegion
+            )
+            THEN
+            (
+            PIVOTED(('p[itemprop="description"]')).text AS description
+            )
+            THEN
+            (
+            PIVOTED(('div[itemprop="telephone"]')).text AS telephone
+            )
+            )
+            WHERE (
+            splitter = CURRENT(('div[class="search-listing"] div[class="list-element__content"]'))
+            )
+            THEN WGETJOIN WHERE (
+            splitter = CURRENT(('div[class="search-listing"] section h2 a'))
+            )
+            THEN WGETEXPLORE WHERE (
+            splitter = CURRENT(('a:not([href*="mailto"]'))
+            )
+            AND PARAMETERS ARE
+            (
+            maxDepth = (('1'))
+            )
+            THEN SELECT (
+            (
+            CURRENT(('body')).allemail AS m
+            )
+            )
+        </code>
+    </query>
+</queries>
+</project>
+</projects>

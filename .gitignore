@@ -1,0 +1,15 @@
+# Sensitive/local config (do not commit)
+config.cfg
+config.local.cfg
+
+# Build artifacts
+/target/
+
+# IDE files
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+
+
