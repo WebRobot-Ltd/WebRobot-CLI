@@ -59,6 +59,45 @@ class BaseSubCommand extends Runnable {
     builder.build()
   }
 
+  protected def getAgenticBaseUrl(): String =
+  {
+    try {
+      val url = RunWebRobotCli.config.getString("agentic_base_url")
+      if (url != null && !url.isEmpty) return url
+    } catch { case _: Throwable => () }
+    "http://localhost:5000"
+  }
+
+  protected def postJson(urlStr: String, body: String): String =
+  {
+    val url = new URL(urlStr)
+    val connection = url.openConnection.asInstanceOf[HttpURLConnection]
+    connection.setDoOutput(true)
+    connection.setRequestMethod("POST")
+    connection.setRequestProperty("Content-Type", "application/json")
+
+    val headerApiKey = this.generateApiKeyHeader()
+    if (headerApiKey != null && !headerApiKey.isEmpty) {
+      connection.setRequestProperty("X-API-Key", headerApiKey)
+      connection.setRequestProperty("Authorization", s"ApiKey ${headerApiKey}")
+    }
+
+    val headerAuthHeader = this.generateAuthHeader()
+    if (headerAuthHeader != null && !headerAuthHeader.isEmpty) {
+      connection.setRequestProperty("Authorization", headerAuthHeader)
+    }
+
+    val out = connection.getOutputStream
+    out.write(body.getBytes(StandardCharsets.UTF_8))
+    out.flush()
+    out.close()
+
+    val code = connection.getResponseCode
+    val stream = if (code >= 200 && code < 300) connection.getInputStream else connection.getErrorStream
+    val response = IOUtils.toString(stream, StandardCharsets.UTF_8)
+    response
+  }
+
   protected  def generateApiKeyHeader() : String =
   {
     var apiKey =  RunWebRobotCli.config.getString("apikey");
