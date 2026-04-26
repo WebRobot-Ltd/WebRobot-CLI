@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Stesso schema di WebRobot.Sdk — id ossrh; token da central.sonatype.com. Locale: sonatype-settings.local.xml (gitignored). -->
+<!--
+  Stesso schema di WebRobot.Sdk/sonatype-settings.example.xml (Portal user token su ossrh, non OSSRH legacy).
+  https://central.sonatype.com/usertoken — Locale: sonatype-settings.local.xml (gitignored).
+-->
 <settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
           xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0 https://maven.apache.org/xsd/settings-1.2.0.xsd">

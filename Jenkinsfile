@@ -163,7 +163,8 @@ spec:
             steps {
                 container('maven') {
                     script {
-                        echo "Deploy Sonatype OSS: overlay ossrh da credential ${params.SONATYPE_CREDENTIALS_ID} + managed global ${env.MAVEN_SETTINGS_CONFIG}"
+                        echo 'Deploy: credenziale Jenkins deve usare Central PORTAL user token (https://central.sonatype.com/usertoken) — token OSSRH legacy → 401.'
+                        echo "Overlay ossrh: credential ${params.SONATYPE_CREDENTIALS_ID} + managed global ${env.MAVEN_SETTINGS_CONFIG}"
                         def esc = { String s ->
                             if (s == null) {
                                 return ''
