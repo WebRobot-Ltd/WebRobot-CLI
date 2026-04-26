@@ -1,16 +1,16 @@
-# Job effimero: scarica install-webrobot-cli.sh dal branch master su GitHub e
-#  - senza WEBROBOT_CLI_JAR_URL: solo curl + bash -n (smoke referenza script)
-#  - con WEBROBOT_CLI_JAR_URL: installazione completa (JRE Temurin se serve) sotto PREFIX
+# Job effimero: smoke + installazione CLI completa.
 #
-# Uso (generateName → ogni run crea un Job nuovo):
+# 1) Scarica install-webrobot-cli.sh da GitHub (branch master).
+# 2) JAR da Maven Central (repo1.maven.org), URL pubblico — nessun Secret PAT.
+# 3) Versione artifact: WEBROBOT_CLI_MAVEN_VERSION (coordinate webrobot.eu:org.webrobot.eu.spark.job).
+#
+# Se WEBROBOT_CLI_JAR_URL è valorizzato, viene usato al posto del download da Central.
+#
+# Uso:
 #   kubectl create -f k8s/smoke-cli-install-job.yaml
-#   JOB=$(kubectl get jobs -l app.kubernetes.io/name=webrobot-cli-smoke-install --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}')
-#   kubectl wait --for=condition=complete "job/$JOB" --timeout=600s
-#   kubectl logs "job/$JOB"
-#
-# Install completa (patch env prima di apply, o duplica YAML):
-#   kubectl patch job "$JOB" -p '{"spec":{"template":{"spec":{"containers":[{"name":"smoke","env":[{"name":"WEBROBOT_CLI_JAR_URL","value":"https://..."}]}]}}}}'  # fragile
-# Meglio: kubectl apply -f - dopo aver sostituito value: "" sotto WEBROBOT_CLI_JAR_URL.
+#   JOB=$(kubectl get jobs -n default -l app.kubernetes.io/name=webrobot-cli-smoke-install --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}')
+#   kubectl wait -n default --for=condition=complete "job/$JOB" --timeout=900s
+#   kubectl logs -n default "job/$JOB"
 #
 apiVersion: batch/v1
 kind: Job
@@ -34,29 +34,36 @@ spec:
           resources:
             requests:
               cpu: "100m"
-              memory: "256Mi"
+              memory: "512Mi"
             limits:
-              cpu: "1"
-              memory: "1Gi"
+              cpu: "2"
+              memory: "2Gi"
           env:
-            - name: WEBROBOT_CLI_JAR_URL
-              value: ""
             - name: PREFIX
               value: "/opt/webrobot-cli"
             - name: WEBROBOT_AUTO_JRE
               value: "true"
+            - name: WEBROBOT_CLI_MAVEN_VERSION
+              value: "0.3.10"
+            - name: WEBROBOT_CLI_JAR_URL
+              value: ""
           command: ["/bin/bash", "-lc"]
           args:
             - |
-              set -euxo pipefail
+              set -euo pipefail
               apt-get update -qq
               DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl tar ca-certificates bash
               SCRIPT_URL="https://raw.githubusercontent.com/WebRobot-Ltd/WebRobot-CLI/master/scripts/install-webrobot-cli.sh"
               curl -fsSL "$SCRIPT_URL" -o /tmp/install-webrobot-cli.sh
               bash -n /tmp/install-webrobot-cli.sh
-              if [[ -z "${WEBROBOT_CLI_JAR_URL:-}" ]]; then
-                echo "OK: script master scaricabile e sintassi valida. Imposta env WEBROBOT_CLI_JAR_URL nel Job per provare install completa."
-                exit 0
+              if [[ -n "${WEBROBOT_CLI_JAR_URL:-}" ]]; then
+                echo "Uso WEBROBOT_CLI_JAR_URL esplicito."
+              else
+                VER="${WEBROBOT_CLI_MAVEN_VERSION:?WEBROBOT_CLI_MAVEN_VERSION mancante}"
+                JAR_URL="https://repo1.maven.org/maven2/webrobot/eu/org.webrobot.eu.spark.job/${VER}/org.webrobot.eu.spark.job-${VER}.jar"
+                echo "Download JAR da Maven Central: ${JAR_URL}"
+                curl -fsSL "$JAR_URL" -o /tmp/webrobot-cli.jar
+                export WEBROBOT_CLI_JAR_URL="file:///tmp/webrobot-cli.jar"
               fi
               chmod +x /tmp/install-webrobot-cli.sh
               export PREFIX WEBROBOT_AUTO_JRE WEBROBOT_CLI_JAR_URL

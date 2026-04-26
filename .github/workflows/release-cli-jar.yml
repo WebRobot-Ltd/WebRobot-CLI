@@ -2,9 +2,8 @@
 #   https://github.com/WebRobot-Ltd/WebRobot-CLI/releases/latest/download/webrobot-cli-uber.jar
 # (funziona se l'asset si chiama esattamente webrobot-cli-uber.jar nella release più recente)
 #
-# Secrets repository (Settings → Secrets → Actions):
-#   GH_PACKAGES_USER   tipicamente: x-access-token
-#   GH_PACKAGES_TOKEN  PAT con read:packages (per risolvere webrobot.eu:org.webrobot.sdk da GPR)
+# La CLI risolve webrobot.eu:org.webrobot.sdk da Maven Central (nessun secret GPR necessario
+# dopo che lo SDK è pubblicato su Central).
 #
 name: Release CLI uber-jar
 
@@ -16,7 +15,7 @@ on:
         required: true
         type: string
       webrobot_sdk_version:
-        description: "Versione Maven SDK su GPR (-Dwebrobot.sdk.depversion)"
+        description: "Versione Maven SDK su Central (-Dwebrobot.sdk.depversion)"
         required: true
         default: "0.3.10"
         type: string
@@ -28,7 +27,6 @@ on:
 
 permissions:
   contents: write
-  packages: read
 
 jobs:
   build-and-release:
@@ -41,9 +39,6 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: maven
-          server-id: webrobot-ltd-repository
-          server-username: ${{ secrets.GH_PACKAGES_USER }}
-          server-password: ${{ secrets.GH_PACKAGES_TOKEN }}
 
       - name: Build uber-jar
         run: |

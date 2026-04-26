@@ -1,10 +1,10 @@
 /**
  * WebRobot CLI (Picocli) — stesso modello Kubernetes/Maven di WebRobot.Sdk:
- * withMaven + managed settings per risolvere org.webrobot.sdk da GitHub Packages.
+ * withMaven + managed settings (Sonatype: server id ossrh per deploy; SDK da Maven Central).
  * Artefatto: target/org.webrobot.eu.spark.job-*-uber.jar (shade).
  *
  * Versione CLI (${revision}): default CI 0.3.<BUILD_NUMBER> (nuova GAV ad ogni build).
- * Dipendenza SDK: param WEBROBOT_SDK_MAVEN_VERSION (versione già pubblicata su GPR).
+ * Dipendenza SDK: param WEBROBOT_SDK_MAVEN_VERSION (versione su Maven Central).
  */
 pipeline {
     agent {
@@ -45,7 +45,7 @@ spec:
 
     environment {
         GITHUB_REPOSITORY = 'WebRobot-Ltd/WebRobot-CLI'
-        // Allineato a rest-api/WebRobotAPIS-new/Jenkinsfile (managed settings + PAT GitHub Packages)
+        // Managed Maven settings: includere <server><id>ossrh</id> (Sonatype) per deploy Central.
         MAVEN_CREDENTIALS = 'github-token'
         MAVEN_SETTINGS_CONFIG = '603a9990-8a95-4328-84f2-693f1c72212f'
         UBER_JAR_GLOB = 'target/org.webrobot.eu.spark.job-*-uber.jar'
@@ -60,7 +60,7 @@ spec:
         booleanParam(
             name: 'DEPLOY_TO_MAVEN',
             defaultValue: false,
-            description: 'Deploy del package Maven su GitHub Packages (distributionManagement nel pom)'
+            description: 'Deploy del package Maven su Maven Central / Sonatype OSS (distributionManagement nel pom)'
         )
         booleanParam(
             name: 'COPY_STABLE_NAME',
@@ -77,7 +77,7 @@ spec:
             name: 'WEBROBOT_SDK_MAVEN_VERSION',
             defaultValue: '0.3.10',
             trim: true,
-            description: 'Versione webrobot.eu:org.webrobot.sdk su GitHub Packages (allinea all’ultimo deploy SDK, es. 0.3.10).'
+            description: 'Versione webrobot.eu:org.webrobot.sdk su Maven Central (allinea all’ultimo deploy SDK).'
         )
     }
 
@@ -148,14 +148,14 @@ spec:
             }
         }
 
-        stage('Deploy to GitHub Packages') {
+        stage('Deploy to Maven Central') {
             when {
                 expression { return params.DEPLOY_TO_MAVEN }
             }
             steps {
                 container('maven') {
                     script {
-                        echo 'Deploy su GitHub Packages (webrobot.eu:org.webrobot.eu.spark.job → maven.pkg.github.com/WebRobot-Ltd/WebRobot-CLI)...'
+                        echo 'Deploy su Sonatype OSS (Maven Central) — server id ossrh nel managed settings...'
                         withMaven(globalMavenSettingsConfig: env.MAVEN_SETTINGS_CONFIG) {
                             sh "mvn -B deploy -DskipTests -Drevision=${env.MAVEN_REVISION} -Dwebrobot.sdk.depversion=${env.WEBROBOT_SDK_MAVEN_VERSION}"
                         }
@@ -185,7 +185,7 @@ spec:
             echo 'Installazione: scripts/install-webrobot-cli.sh con WEBROBOT_CLI_JAR_URL=<URL pubblico del jar>.'
         }
         failure {
-            echo 'Build o deploy fallito: log Maven, managed settings (server webrobot-ltd-repository) e PAT read/write:packages per il repo WebRobot-CLI.'
+            echo 'Build o deploy fallito: log Maven, managed settings (server ossrh / Sonatype), firma GPG e requisiti Central.'
         }
     }
 }

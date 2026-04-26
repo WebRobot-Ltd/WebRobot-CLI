@@ -10,41 +10,25 @@
     <packaging>jar</packaging>
     <properties>
         <revision>0.3.0-SNAPSHOT</revision>
-        <!-- Versione Maven dello SDK su GitHub Packages (Jenkins: -Dwebrobot.sdk.depversion=… allineata all’ultimo deploy SDK) -->
+        <!-- Versione Maven dello SDK (Maven Central dopo pubblicazione; allinea al deploy SDK) -->
         <webrobot.sdk.depversion>0.3.10</webrobot.sdk.depversion>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
     </properties>
 
-    <repositories>
-        <!--
-          L'id DEVE coincidere con <server><id> in ~/.m2/settings.xml (PAT GitHub) e con Jenkins withMaven
-          (stesso id usato da WebRobot.Sdk in distributionManagement: webrobot-ltd-repository).
-        -->
-        <repository>
-            <id>webrobot-ltd-repository</id>
-            <name>GitHub Packages — webrobot.eu:org.webrobot.sdk</name>
-            <url>https://maven.pkg.github.com/WebRobot-Ltd/webrobot-sdk</url>
-            <releases>
-                <enabled>true</enabled>
-            </releases>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
+    <!-- Risoluzione dipendenze: Maven Central (default). Nessun repository GitHub Packages. -->
 
-    <!-- Deploy: stesso schema di WebRobot.Sdk / rest-api/WebRobotAPIS-new (GitHub Packages). Server id = webrobot-ltd-repository (settings Jenkins / ~/.m2). -->
+    <!-- Deploy: Maven Central via Sonatype OSS (host s01). Server id = ossrh (vedi sonatype-settings.example.xml). -->
     <distributionManagement>
         <repository>
-            <id>webrobot-ltd-repository</id>
-            <name>GitHub Packages — WebRobot-CLI</name>
-            <url>https://maven.pkg.github.com/WebRobot-Ltd/WebRobot-CLI</url>
+            <id>ossrh</id>
+            <name>Sonatype OSS Staging (Maven Central)</name>
+            <url>https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/</url>
         </repository>
         <snapshotRepository>
-            <id>webrobot-ltd-repository</id>
-            <name>GitHub Packages Snapshots — WebRobot-CLI</name>
-            <url>https://maven.pkg.github.com/WebRobot-Ltd/WebRobot-CLI</url>
+            <id>ossrh</id>
+            <name>Sonatype OSS Snapshots</name>
+            <url>https://s01.oss.sonatype.org/content/repositories/snapshots/</url>
         </snapshotRepository>
     </distributionManagement>
 
