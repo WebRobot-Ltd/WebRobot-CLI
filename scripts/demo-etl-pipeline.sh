@@ -5,7 +5,7 @@
 #
 # Prerequisiti: bash, jq, java 8+, uber-jar CLI, config.cfg (vedi RunWebRobotCli).
 #
-#   export WEBROBOT_CLI_JAR=/path/to/org.webrobot.eu.spark.job-0.3-uber.jar
+#   export WEBROBOT_CLI_JAR=/path/to/org.webrobot.eu.spark.job-<versione>-uber.jar
 #   cd /path/to/webrobot-cli && ./scripts/demo-etl-pipeline.sh
 #
 set -euo pipefail
@@ -14,7 +14,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLI_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "$CLI_ROOT"
 
-JAR="${WEBROBOT_CLI_JAR:-${CLI_ROOT}/target/org.webrobot.eu.spark.job-0.3-uber.jar}"
+JAR="${WEBROBOT_CLI_JAR:-}"
+if [[ -z "$JAR" ]]; then
+  JAR="$(ls "${CLI_ROOT}"/target/org.webrobot.eu.spark.job-*-uber.jar 2>/dev/null | head -1 || true)"
+fi
 
 if [[ ! -f "$JAR" ]]; then
   echo "JAR non trovato: $JAR" >&2
