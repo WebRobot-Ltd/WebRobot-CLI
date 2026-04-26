@@ -5,6 +5,8 @@
 # Build artifacts
 /target/
 .flattened-pom.xml
+# Credenziali Sonatype locali (mai in git)
+sonatype-settings.local.xml
 
 # IDE files
 .idea/

@@ -5,6 +5,8 @@
  *
  * Versione CLI (${revision}): default CI 0.3.<BUILD_NUMBER> (nuova GAV ad ogni build).
  * Dipendenza SDK: param WEBROBOT_SDK_MAVEN_VERSION (versione su Maven Central).
+ * Deploy Central: credential Jenkins «Username with password» (param SONATYPE_CREDENTIALS_ID, default sonatype-ossrh)
+ * + overlay settings ossrh; Maven unisce con il managed file MAVEN_SETTINGS_CONFIG.
  */
 pipeline {
     agent {
@@ -45,7 +47,7 @@ spec:
 
     environment {
         GITHUB_REPOSITORY = 'WebRobot-Ltd/WebRobot-CLI'
-        // Managed Maven settings: includere <server><id>ossrh</id> (Sonatype) per deploy Central.
+        // Managed Maven settings (mirror/proxy); segreti Sonatype via credential SONATYPE_CREDENTIALS_ID nello stage deploy.
         MAVEN_CREDENTIALS = 'github-token'
         MAVEN_SETTINGS_CONFIG = '603a9990-8a95-4328-84f2-693f1c72212f'
         UBER_JAR_GLOB = 'target/org.webrobot.eu.spark.job-*-uber.jar'
@@ -78,6 +80,12 @@ spec:
             defaultValue: '0.3.10',
             trim: true,
             description: 'Versione webrobot.eu:org.webrobot.sdk su Maven Central (allinea all’ultimo deploy SDK).'
+        )
+        string(
+            name: 'SONATYPE_CREDENTIALS_ID',
+            defaultValue: 'sonatype-ossrh',
+            trim: true,
+            description: 'Jenkins credential ID (Username with password) per Sonatype OSS — server Maven id ossrh'
         )
     }
 
@@ -155,9 +163,34 @@ spec:
             steps {
                 container('maven') {
                     script {
-                        echo 'Deploy su Sonatype OSS (Maven Central) — server id ossrh nel managed settings...'
-                        withMaven(globalMavenSettingsConfig: env.MAVEN_SETTINGS_CONFIG) {
-                            sh "mvn -B deploy -DskipTests -Drevision=${env.MAVEN_REVISION} -Dwebrobot.sdk.depversion=${env.WEBROBOT_SDK_MAVEN_VERSION}"
+                        echo "Deploy Sonatype OSS: overlay ossrh da credential ${params.SONATYPE_CREDENTIALS_ID} + managed global ${env.MAVEN_SETTINGS_CONFIG}"
+                        def esc = { String s ->
+                            if (s == null) {
+                                return ''
+                            }
+                            return s.replace('&', '&amp;')
+                                .replace('<', '&lt;')
+                                .replace('>', '&gt;')
+                                .replace('"', '&quot;')
+                                .replace('\'', '&apos;')
+                        }
+                        withCredentials([usernamePassword(credentialsId: params.SONATYPE_CREDENTIALS_ID, usernameVariable: 'OSSRH_USER', passwordVariable: 'OSSRH_PASS')]) {
+                            writeFile file: 'jenkins-ossrh-overlay-settings.xml', text: """<?xml version="1.0" encoding="UTF-8"?>
+<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0 https://maven.apache.org/xsd/settings-1.2.0.xsd">
+  <servers>
+    <server>
+      <id>ossrh</id>
+      <username>${esc(env.OSSRH_USER)}</username>
+      <password>${esc(env.OSSRH_PASS)}</password>
+    </server>
+  </servers>
+</settings>
+"""
+                            withMaven(globalMavenSettingsConfig: env.MAVEN_SETTINGS_CONFIG, mavenSettingsFile: "${env.WORKSPACE}/jenkins-ossrh-overlay-settings.xml") {
+                                sh "mvn -B deploy -DskipTests -Drevision=${env.MAVEN_REVISION} -Dwebrobot.sdk.depversion=${env.WEBROBOT_SDK_MAVEN_VERSION}"
+                            }
                         }
                     }
                 }
