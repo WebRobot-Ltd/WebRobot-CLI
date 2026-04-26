@@ -1,0 +1,64 @@
+# Job effimero: scarica install-webrobot-cli.sh dal branch master su GitHub e
+#  - senza WEBROBOT_CLI_JAR_URL: solo curl + bash -n (smoke referenza script)
+#  - con WEBROBOT_CLI_JAR_URL: installazione completa (JRE Temurin se serve) sotto PREFIX
+#
+# Uso (generateName → ogni run crea un Job nuovo):
+#   kubectl create -f k8s/smoke-cli-install-job.yaml
+#   JOB=$(kubectl get jobs -l app.kubernetes.io/name=webrobot-cli-smoke-install --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}')
+#   kubectl wait --for=condition=complete "job/$JOB" --timeout=600s
+#   kubectl logs "job/$JOB"
+#
+# Install completa (patch env prima di apply, o duplica YAML):
+#   kubectl patch job "$JOB" -p '{"spec":{"template":{"spec":{"containers":[{"name":"smoke","env":[{"name":"WEBROBOT_CLI_JAR_URL","value":"https://..."}]}]}}}}'  # fragile
+# Meglio: kubectl apply -f - dopo aver sostituito value: "" sotto WEBROBOT_CLI_JAR_URL.
+#
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: webrobot-cli-smoke-
+  namespace: default
+  labels:
+    app.kubernetes.io/name: webrobot-cli-smoke-install
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: webrobot-cli-smoke-install
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: smoke
+          image: debian:bookworm-slim
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          env:
+            - name: WEBROBOT_CLI_JAR_URL
+              value: ""
+            - name: PREFIX
+              value: "/opt/webrobot-cli"
+            - name: WEBROBOT_AUTO_JRE
+              value: "true"
+          command: ["/bin/bash", "-lc"]
+          args:
+            - |
+              set -euxo pipefail
+              apt-get update -qq
+              DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl tar ca-certificates bash
+              SCRIPT_URL="https://raw.githubusercontent.com/WebRobot-Ltd/WebRobot-CLI/master/scripts/install-webrobot-cli.sh"
+              curl -fsSL "$SCRIPT_URL" -o /tmp/install-webrobot-cli.sh
+              bash -n /tmp/install-webrobot-cli.sh
+              if [[ -z "${WEBROBOT_CLI_JAR_URL:-}" ]]; then
+                echo "OK: script master scaricabile e sintassi valida. Imposta env WEBROBOT_CLI_JAR_URL nel Job per provare install completa."
+                exit 0
+              fi
+              chmod +x /tmp/install-webrobot-cli.sh
+              export PREFIX WEBROBOT_AUTO_JRE WEBROBOT_CLI_JAR_URL
+              /tmp/install-webrobot-cli.sh
+              exec "${PREFIX}/bin/webrobot" --help
