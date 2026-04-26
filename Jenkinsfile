@@ -42,6 +42,8 @@ spec:
 
     environment {
         GITHUB_REPOSITORY = 'WebRobot-Ltd/WebRobot-CLI'
+        // Allineato a rest-api/WebRobotAPIS-new/Jenkinsfile (managed settings + PAT GitHub Packages)
+        MAVEN_CREDENTIALS = 'github-token'
         MAVEN_SETTINGS_CONFIG = '603a9990-8a95-4328-84f2-693f1c72212f'
         UBER_JAR_GLOB = 'target/org.webrobot.eu.spark.job-*-uber.jar'
     }
@@ -51,6 +53,11 @@ spec:
             name: 'RUN_TESTS',
             defaultValue: false,
             description: 'Eseguire mvn test prima del package'
+        )
+        booleanParam(
+            name: 'DEPLOY_TO_MAVEN',
+            defaultValue: false,
+            description: 'Deploy del package Maven su GitHub Packages (distributionManagement nel pom)'
         )
         booleanParam(
             name: 'COPY_STABLE_NAME',
@@ -122,6 +129,22 @@ spec:
             }
         }
 
+        stage('Deploy to GitHub Packages') {
+            when {
+                expression { return params.DEPLOY_TO_MAVEN }
+            }
+            steps {
+                container('maven') {
+                    script {
+                        echo 'Deploy su GitHub Packages (webrobot.eu:org.webrobot.eu.spark.job → maven.pkg.github.com/WebRobot-Ltd/WebRobot-CLI)...'
+                        withMaven(globalMavenSettingsConfig: env.MAVEN_SETTINGS_CONFIG) {
+                            sh 'mvn -B deploy -DskipTests'
+                        }
+                    }
+                }
+            }
+        }
+
         stage('Archive artifacts') {
             steps {
                 container('maven') {
@@ -139,10 +162,11 @@ spec:
     post {
         success {
             echo 'OK — CLI uber-jar in Jenkins Artifacts (Permalink: job → lastSuccessfulBuild → artifact).'
+            echo "Deploy Maven su GitHub Packages: ${params.DEPLOY_TO_MAVEN ? 'sì' : 'no'}."
             echo 'Installazione: scripts/install-webrobot-cli.sh con WEBROBOT_CLI_JAR_URL=<URL pubblico del jar>.'
         }
         failure {
-            echo 'Build fallita: log Maven, credenziali GitHub Packages per webrobot.eu:org.webrobot.sdk.'
+            echo 'Build o deploy fallito: log Maven, managed settings (server webrobot-ltd-repository) e PAT read/write:packages per il repo WebRobot-CLI.'
         }
     }
 }

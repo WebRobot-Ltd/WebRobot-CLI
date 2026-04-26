@@ -32,6 +32,20 @@
         </repository>
     </repositories>
 
+    <!-- Deploy: stesso schema di WebRobot.Sdk / rest-api/WebRobotAPIS-new (GitHub Packages). Server id = webrobot-ltd-repository (settings Jenkins / ~/.m2). -->
+    <distributionManagement>
+        <repository>
+            <id>webrobot-ltd-repository</id>
+            <name>GitHub Packages — WebRobot-CLI</name>
+            <url>https://maven.pkg.github.com/WebRobot-Ltd/WebRobot-CLI</url>
+        </repository>
+        <snapshotRepository>
+            <id>webrobot-ltd-repository</id>
+            <name>GitHub Packages Snapshots — WebRobot-CLI</name>
+            <url>https://maven.pkg.github.com/WebRobot-Ltd/WebRobot-CLI</url>
+        </snapshotRepository>
+    </distributionManagement>
+
     <build>
         <sourceDirectory>src</sourceDirectory>
         <resources>
