@@ -5,8 +5,8 @@
  *
  * Versione CLI (${revision}): default CI 0.3.<BUILD_NUMBER> (nuova GAV ad ogni build).
  * Dipendenza SDK: param WEBROBOT_SDK_MAVEN_VERSION (versione su Maven Central).
- * Deploy Central: credential Jenkins «Username with password» (param SONATYPE_CREDENTIALS_ID, default sonatype-ossrh)
- * + overlay settings ossrh; Maven unisce con il managed file MAVEN_SETTINGS_CONFIG.
+ * Deploy Central: in Jenkins credenziale con ID `sonatype-ossrh` (param SONATYPE_CREDENTIALS_ID, default uguale)
+ * + overlay <server><id>ossrh</id>; Maven unisce con il managed file MAVEN_SETTINGS_CONFIG.
  */
 pipeline {
     agent {
