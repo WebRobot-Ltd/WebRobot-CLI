@@ -18,17 +18,17 @@
 
     <!-- Risoluzione dipendenze: Maven Central (default). Nessun repository GitHub Packages. -->
 
-    <!-- Deploy: Maven Central via Sonatype OSS (host s01). Server id = ossrh (vedi sonatype-settings.example.xml). -->
+    <!-- Deploy: ossrh-staging-api (post-OSSRH s01); token Central Portal. Vedi WebRobot.Sdk/pom.xml commento. -->
     <distributionManagement>
         <repository>
             <id>ossrh</id>
-            <name>Sonatype OSS Staging (Maven Central)</name>
-            <url>https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+            <name>Sonatype OSSRH Staging API (Central Portal)</name>
+            <url>https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/</url>
         </repository>
         <snapshotRepository>
             <id>ossrh</id>
-            <name>Sonatype OSS Snapshots</name>
-            <url>https://s01.oss.sonatype.org/content/repositories/snapshots/</url>
+            <name>Maven Central Snapshots (Portal)</name>
+            <url>https://central.sonatype.com/repository/maven-snapshots/</url>
         </snapshotRepository>
     </distributionManagement>
 
