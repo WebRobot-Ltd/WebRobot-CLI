@@ -2,6 +2,9 @@
  * WebRobot CLI (Picocli) — stesso modello Kubernetes/Maven di WebRobot.Sdk:
  * withMaven + managed settings per risolvere org.webrobot.sdk da GitHub Packages.
  * Artefatto: target/org.webrobot.eu.spark.job-*-uber.jar (shade).
+ *
+ * Versione CLI (${revision}): default CI 0.3.<BUILD_NUMBER> (nuova GAV ad ogni build).
+ * Dipendenza SDK: param WEBROBOT_SDK_MAVEN_VERSION (versione già pubblicata su GPR).
  */
 pipeline {
     agent {
@@ -64,6 +67,18 @@ spec:
             defaultValue: true,
             description: 'Copia anche webrobot-cli-uber.jar in target/ (URL fisso per script di installazione / mirror)'
         )
+        string(
+            name: 'MAVEN_REVISION',
+            defaultValue: '',
+            trim: true,
+            description: 'Versione Maven del modulo CLI (es. 0.4.2). Vuoto = auto 0.3.<BUILD_NUMBER>.'
+        )
+        string(
+            name: 'WEBROBOT_SDK_MAVEN_VERSION',
+            defaultValue: '0.3.10',
+            trim: true,
+            description: 'Versione webrobot.eu:org.webrobot.sdk su GitHub Packages (allinea all’ultimo deploy SDK, es. 0.3.10).'
+        )
     }
 
     options {
@@ -79,7 +94,11 @@ spec:
                     def scmVars = checkout scm
                     env.GIT_COMMIT = scmVars.GIT_COMMIT
                     env.GIT_COMMIT_SHORT = scmVars.GIT_COMMIT ? scmVars.GIT_COMMIT.take(8) : 'unknown'
+                    def manualRev = params.MAVEN_REVISION?.trim()
+                    env.MAVEN_REVISION = manualRev ? manualRev : "0.3.${env.BUILD_NUMBER}"
+                    env.WEBROBOT_SDK_MAVEN_VERSION = params.WEBROBOT_SDK_MAVEN_VERSION?.trim() ?: '0.3.10'
                     echo "Checkout ${env.GITHUB_REPOSITORY} @ ${env.GIT_COMMIT_SHORT}"
+                    echo "Maven -Drevision=${env.MAVEN_REVISION} -Dwebrobot.sdk.depversion=${env.WEBROBOT_SDK_MAVEN_VERSION}"
                 }
             }
         }
@@ -100,7 +119,7 @@ spec:
                 container('maven') {
                     script {
                         withMaven(globalMavenSettingsConfig: env.MAVEN_SETTINGS_CONFIG) {
-                            sh 'mvn -B test'
+                            sh "mvn -B test -Drevision=${env.MAVEN_REVISION} -Dwebrobot.sdk.depversion=${env.WEBROBOT_SDK_MAVEN_VERSION}"
                         }
                     }
                 }
@@ -112,7 +131,7 @@ spec:
                 container('maven') {
                     script {
                         withMaven(globalMavenSettingsConfig: env.MAVEN_SETTINGS_CONFIG) {
-                            sh 'mvn -U -B clean package -DskipTests'
+                            sh "mvn -U -B clean package -DskipTests -Drevision=${env.MAVEN_REVISION} -Dwebrobot.sdk.depversion=${env.WEBROBOT_SDK_MAVEN_VERSION}"
                         }
                         sh "ls -la target/*.jar || true"
                         if (params.COPY_STABLE_NAME) {
@@ -138,7 +157,7 @@ spec:
                     script {
                         echo 'Deploy su GitHub Packages (webrobot.eu:org.webrobot.eu.spark.job → maven.pkg.github.com/WebRobot-Ltd/WebRobot-CLI)...'
                         withMaven(globalMavenSettingsConfig: env.MAVEN_SETTINGS_CONFIG) {
-                            sh 'mvn -B deploy -DskipTests'
+                            sh "mvn -B deploy -DskipTests -Drevision=${env.MAVEN_REVISION} -Dwebrobot.sdk.depversion=${env.WEBROBOT_SDK_MAVEN_VERSION}"
                         }
                     }
                 }
@@ -162,7 +181,7 @@ spec:
     post {
         success {
             echo 'OK — CLI uber-jar in Jenkins Artifacts (Permalink: job → lastSuccessfulBuild → artifact).'
-            echo "Deploy Maven su GitHub Packages: ${params.DEPLOY_TO_MAVEN ? 'sì' : 'no'}."
+            echo "CLI revision ${env.MAVEN_REVISION}; SDK dep ${env.WEBROBOT_SDK_MAVEN_VERSION}. Deploy Maven: ${params.DEPLOY_TO_MAVEN ? 'sì' : 'no'}."
             echo 'Installazione: scripts/install-webrobot-cli.sh con WEBROBOT_CLI_JAR_URL=<URL pubblico del jar>.'
         }
         failure {

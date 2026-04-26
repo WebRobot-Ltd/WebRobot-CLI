@@ -2,16 +2,18 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <version>0.3</version>
+    <!-- Versione CI-friendly: Jenkins passa -Drevision=… (default 0.3.<BUILD_NUMBER>). Locale: default SNAPSHOT. -->
+    <version>${revision}</version>
     <modelVersion>4.0.0</modelVersion>
     <artifactId>org.webrobot.eu.spark.job</artifactId>
     <groupId>webrobot.eu</groupId>
     <packaging>jar</packaging>
     <properties>
+        <revision>0.3.0-SNAPSHOT</revision>
+        <!-- Versione Maven dello SDK su GitHub Packages (Jenkins: -Dwebrobot.sdk.depversion=… allineata all’ultimo deploy SDK) -->
+        <webrobot.sdk.depversion>0.3.10</webrobot.sdk.depversion>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <!-- SDK pubblicato come webrobot/eu/org.webrobot.sdk/${webrobot.sdk.version}/org.webrobot.sdk-${webrobot.sdk.version}.jar su GitHub Packages -->
-        <webrobot.sdk.version>0.3</webrobot.sdk.version>
     </properties>
 
     <repositories>
@@ -55,6 +57,32 @@
         </resources>
 
         <plugins>
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
+                <version>1.5.0</version>
+                <configuration>
+                    <updatePomFile>true</updatePomFile>
+                    <flattenMode>resolveCiFriendliesOnly</flattenMode>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>flatten</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>flatten</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>flatten.clean</id>
+                        <phase>clean</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
 
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -159,11 +187,11 @@
             <artifactId>config</artifactId>
             <version>1.2.0</version>
         </dependency>
-        <!-- webrobot.eu:org.webrobot.sdk:0.3 — JAR org.webrobot.sdk-0.3.jar (path Maven: webrobot/eu/org.webrobot.sdk/0.3/) -->
+        <!-- webrobot.eu:org.webrobot.sdk — versione da GPR (proprietà webrobot.sdk.depversion) -->
         <dependency>
             <groupId>webrobot.eu</groupId>
             <artifactId>org.webrobot.sdk</artifactId>
-            <version>${webrobot.sdk.version}</version>
+            <version>${webrobot.sdk.depversion}</version>
         </dependency>
 
         <dependency>

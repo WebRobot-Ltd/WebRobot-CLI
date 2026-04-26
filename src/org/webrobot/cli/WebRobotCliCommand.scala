@@ -20,9 +20,9 @@ import org.webrobot.cli.commands.{
     "CLI WebRobot: comandi su progetto, category (categorie job), agent, dataset, job, package (import/export).",
     "Gruppo `agentic` (backend FastAPI separato) non incluso finché il flusso ETL non è completato.",
     "Gruppi dismessi (non esposti): page, concept, script (vecchia API Gateway / wrapper).",
-    "Client API: JAR webrobot.eu:org.webrobot.sdk:0.3 da GitHub Packages (repository WebRobot-Ltd/webrobot-sdk).",
+    "Client API: JAR webrobot.eu:org.webrobot.sdk:0.3.10 da GitHub Packages (repository WebRobot-Ltd/webrobot-sdk).",
     "Endpoint API: chiave `api_endpoint` in config (default https://api.webrobot.eu).",
-    "Percorso artifact sul registry: webrobot/eu/org.webrobot.sdk/0.3/org.webrobot.sdk-0.3.jar."
+    "Percorso artifact sul registry: webrobot/eu/org.webrobot.sdk/0.3.10/org.webrobot.sdk-0.3.10.jar."
   ),
   footer = Array(
     "",
