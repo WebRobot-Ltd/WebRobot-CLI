@@ -1,301 +1,323 @@
 package org.webrobot.cli.commands
-import java.time.DateTimeException
 
-import WebRobot.Cli.Sdk.model._
-import picocli.CommandLine.{Command, Option}
-import com.amazonaws.opensdk.config.{ConnectionConfiguration, TimeoutConfiguration}
+import com.fasterxml.jackson.databind.node.{JsonNodeFactory, ObjectNode}
+import eu.webrobot.openapi.client.model.JobDto
+import org.webrobot.cli.openapi.{JsonCliUtil, OpenApiHttp}
 import org.webrobot.cli.utils.DataGrid
+import picocli.CommandLine.{Command, Option}
 
-import scala.collection.JavaConverters._
-import java.io.{File, FileInputStream, FileOutputStream, IOException, InputStream, OutputStream}
-
-import WebRobot.Cli.Sdk.Utils.Utils
-
-import scala.collection.mutable.ArrayBuffer
-
-@Command(name = "getoutputpagination", sortOptions = false,
-description = Array(
-"Get output of dataset with pagination"),
-footer = Array()
-)
-class RunGetOutputJobPaginationCommand extends BaseSubCommand {
-  @Option(names = Array("-i", "--id"), description = Array("set the project id"),required = true) private var botId : String = ""
-  @Option(names = Array("-p", "--projectId"), description = Array("set the projectId"),required = true) private var projectId : String = ""
-  @Option(names = Array("-d", "--datasetId"), description = Array("set the datasetId"),required = true) private var datasetId : String = ""
-  @Option(names = Array("-j", "--jobId"), description = Array("set the jobId"),required = true) private var jobId : String = ""
-  @Option(names = Array("-f", "--fileName"), description = Array("file name"),required = true) private var fileName : String = ""
-  @Option(names = Array("-v", "--version"), description = Array("version"),required = true) private var version : String = ""
-  @Option(names = Array("-st", "--startTimePeriod"), description = Array("startTimePeriod"),required = true) private var startTimePeriod : String = ""
-  @Option(names = Array("-et", "--endTimePeriod"), description = Array("endTimePeriod"),required = true) private var endTimePeriod : String = ""
-  @Option(names = Array("-l", "--limit"), description = Array("limit"),required = true) private var limit : String = ""
-  @Option(names = Array("-o", "--offset"), description = Array("offset"),required = true) private var offset : String = ""
-  override def startRun(): Unit =
-  {
-    try {
-      this.init()
-      var datasetRequest: Get_output_file_paginationRequest = new Get_output_file_paginationRequest().sdkRequestConfig(this.getCustomSdkRequestConfig())
-      datasetRequest.setBotId(botId)
-      datasetRequest.setProjectId(projectId)
-      datasetRequest.setDatasetId(datasetId)
-      datasetRequest.setJobId(jobId)
-      var timePeriod = new TimePeriod();
-      timePeriod.setStartTimePeriod(startTimePeriod)
-      timePeriod.setEndTimePeriod(endTimePeriod)
-      datasetRequest.setTimePeriod(timePeriod)
-
-      datasetRequest.setLimit(limit)
-      datasetRequest.setOffset(offset)
-      var result = sdkClient.get_output_file_pagination(datasetRequest);
-
-      var records : Seq[DatasetRecord] = result.getListRecords.getRecords.asScala
-      var columns = new ArrayBuffer[String]()
-      if(records.size > 0)
-        {
-          records(0).getFields.asScala.foreach(field => columns.append(field.getName))
-        }
-      this.dataGrid = new DataGrid(columns : _*)
-      records.foreach(item => {
-        var values = new ArrayBuffer[String]()
-        item.getFields.asScala.foreach(field =>   values.append(field.getValue))
-        this.dataGrid.add(values : _*)
-      }
-      )
-      if (this.dataGrid.size > 0) {
-        this.dataGrid.render
-        System.out.println(this.dataGrid.size + " rows in set\n")
-      }
-      else System.out.println("Empty set\n")
-    }
-    catch
-      {
-        case e: IOException => println("An error occurred while fetch the records")
-      }
-  }
-}
-
-
-@Command(name = "getlistdatasetversionsjob", sortOptions = false,
-  description = Array(
-    "List of all dataset of tasks of jobs"),
+@Command(
+  name = "list",
+  sortOptions = false,
+  description = Array("Elenco job del progetto (GET .../projects/id/{projectId}/jobs)."),
   footer = Array()
 )
-class RunGetListDatasetVersionsJobCommand extends BaseSubCommand {
+class RunListJobCommand extends BaseSubCommand {
 
-  @Option(names = Array("-i", "--id"), description = Array("set the project id"),required = true) private var botId : String = ""
-  @Option(names = Array("-p", "--projectId"), description = Array("set the projectId"),required = true) private var projectId : String = ""
-  @Option(names = Array("-d", "--datasetId"), description = Array("set the datasetId"),required = true) private var datasetId : String = ""
-  @Option(names = Array("-j", "--jobId"), description = Array("set the jobId"),required = true) private var jobId : String = ""
-  @Option(names = Array("-f", "--fileName"), description = Array("file name"),required = true) private var fileName : String = ""
-  @Option(names = Array("-v", "--version"), description = Array("version"),required = true) private var version : String = ""
+  @Option(names = Array("-p", "--projectId"), description = Array("project id"), required = true)
+  private var projectId: String = ""
 
-  override def startRun(): Unit =
-  {
-    try {
-      this.init()
-      var datasetRequest: Get_dataset_version_of_tasksRequest = new Get_dataset_version_of_tasksRequest().sdkRequestConfig(this.getCustomSdkRequestConfig())
-      datasetRequest.setBotId(botId)
-      datasetRequest.setProjectId(projectId)
-      datasetRequest.setDatasetId(datasetId)
-      datasetRequest.setJobId(jobId)
-      datasetRequest.setVersion(version)
-      var result = sdkClient.get_dataset_version_of_tasks(datasetRequest);
-      var versions = result.getListDatasetVersions.getVersions.asScala
-      this.dataGrid = new DataGrid("Id","ApiKey","ProjectId","BotId","DatasetId","JobId","Version","TimePeriod","InputDatabaseName","InputTableName","OutputDatabaseName","TargetPathInput","TargetPathOutput")
-      versions.foreach(item => {
-
-        this.dataGrid.add(item.getId,item.getApikey,item.getProjectId,item.getBotId,item.getDatasetId,item.getJobId,item.getVersion,item.getTimePeriod,item.getInputdatabaseName,item.getInputtableName,item.getTargetPath,item.getTargetPathOutput)
-      }
+  override def startRun(): Unit = {
+    this.init()
+    val path =
+      "/webrobot/api/projects/id/" + apiClient().escapeString(projectId) + "/jobs"
+    val node = OpenApiHttp.getJson(apiClient(), path)
+    if (node != null && node.isArray)
+      JsonCliUtil.renderArrayGrid(
+        node,
+        "id",
+        "name",
+        "agentId",
+        "inputDatasetId",
+        "executionStatus",
+        "enabled"
       )
-      if (this.dataGrid.size > 0) {
-        this.dataGrid.render
-        System.out.println(this.dataGrid.size + " rows in set\n")
-      }
-      else System.out.println("Empty set\n")
-    }
-    catch
-      {
-        case e: IOException => println("An error occurred while downloading the file")
-      }
+    else JsonCliUtil.printJson(node)
   }
-
 }
 
-
-@Command(name = "getoutput", sortOptions = false,
-  description = Array(
-    "output of the job"),
-  footer = Array()
-)
-class RunGetOutputJobCommand extends BaseSubCommand {
-
-  @Option(names = Array("-i", "--id"), description = Array("set the project id"),required = true) private var botId : String = ""
-  @Option(names = Array("-p", "--projectId"), description = Array("set the projectId"),required = true) private var projectId : String = ""
-  @Option(names = Array("-d", "--datasetId"), description = Array("set the datasetId"),required = true) private var datasetId : String = ""
-  @Option(names = Array("-j", "--jobId"), description = Array("set the jobId"),required = true) private var jobId : String = ""
-  @Option(names = Array("-f", "--fileName"), description = Array("file name"),required = true) private var fileName : String = ""
-  @Option(names = Array("-st", "--startTimePeriod"), description = Array("start time period"),required = true) private var startTimePeriod : String = ""
-  @Option(names = Array("-et", "--endTimePeriod"), description = Array("end time period"),required = true) private var endTimePeriod : String = ""
-  override def startRun(): Unit =
-  {
-    try {
-      this.init()
-      var jobRequest: Get_output_fileRequest = new Get_output_fileRequest().sdkRequestConfig(this.getCustomSdkRequestConfig())
-      jobRequest.setBotId(botId)
-      jobRequest.setProjectId(projectId)
-      jobRequest.setDatasetId(datasetId)
-      jobRequest.setJobId(jobId)
-      var timePeriod = new TimePeriod();
-      timePeriod.setStartTimePeriod(startTimePeriod)
-      timePeriod.setEndTimePeriod(endTimePeriod)
-      var result = sdkClient.get_output_file(jobRequest);
-      var s3Url = result.getStringResult.getResult
-      Utils.downloadFile(s3Url,this.fileName)
-    }
-    catch
-    {
-      case e: IOException => println("An error occurred while downloading the file")
-    }
-  }
-
-}
-@Command(name = "delete", sortOptions = false,
-  description = Array(
-    "delete job"),
+@Command(
+  name = "delete",
+  sortOptions = false,
+  description = Array("Rimuove job (DELETE .../jobs/{jobId})."),
   footer = Array()
 )
 class RunDeleteJobCommand extends BaseSubCommand {
 
-  @Option(names = Array("-b", "--botId"), description = Array("set the bot id"),required = true) private var botId : String = ""
-  @Option(names = Array("-p", "--projectId"), description = Array("set the projectId"),required = true) private var projectId : String = ""
-  @Option(names = Array("-d", "--datasetId"), description = Array("set the datasetId"),required = true) private var datasetId : String = ""
-  @Option(names = Array("-j", "--jobId"), description = Array("set the jobId"),required = true) private var jobId : String = ""
+  @Option(names = Array("-p", "--projectId"), description = Array("project id"), required = true)
+  private var projectId: String = ""
 
-  override def startRun(): Unit =
-  {
+  @Option(names = Array("-j", "--jobId"), description = Array("job id"), required = true)
+  private var jobId: String = ""
+
+  override def startRun(): Unit = {
     this.init()
-    var jobRequest : Delete_jobRequest = new Delete_jobRequest().sdkRequestConfig(this.getCustomSdkRequestConfig())
-    jobRequest.setBotId(botId)
-    jobRequest.setProjectId(projectId)
-    jobRequest.setDatasetId(datasetId)
-    jobRequest.setJobId(jobId)
-    sdkClient.delete_job(jobRequest)
+    val path =
+      "/webrobot/api/projects/id/" + apiClient().escapeString(projectId) + "/jobs/" + apiClient().escapeString(jobId)
+    OpenApiHttp.deleteJson(apiClient(), path)
   }
 }
-@Command(name = "list", sortOptions = false,
-  description = Array(
-    "list jobs"),
+
+@Command(
+  name = "get",
+  sortOptions = false,
+  description = Array("Dettaglio job (GET .../jobs/{jobId}), JSON su stdout."),
   footer = Array()
 )
-class RunListJobCommand extends BaseSubCommand {
-  @Option(names = Array("-b", "--botId"), description = Array("set the bot id"),required = true) private var botId : String = ""
-  @Option(names = Array("-p", "--projectId"), description = Array("set the projectId"),required = true) private var projectId : String = ""
-  @Option(names = Array("-d", "--datasetId"), description = Array("set the datasetId"),required = true) private var datasetId : String = ""
-  override def startRun(): Unit =
-  {
+class RunGetJobCommand extends BaseSubCommand {
+
+  @Option(names = Array("-p", "--projectId"), description = Array("project id"), required = true)
+  private var projectId: String = ""
+
+  @Option(names = Array("-j", "--jobId"), description = Array("job id"), required = true)
+  private var jobId: String = ""
+
+  override def startRun(): Unit = {
     this.init()
-    var jobListRequest : Get_all_jobsRequest  = new Get_all_jobsRequest().sdkRequestConfig(this.getCustomSdkRequestConfig())
-    jobListRequest.setProjectId(projectId)
-    jobListRequest.setBotId(botId)
-    jobListRequest.setDatasetId(datasetId)
-    var jobListResult : Get_all_jobsResult = sdkClient.get_all_jobs(jobListRequest)
-
-    var jobs  = jobListResult.getListJobs().getJobs.asScala
-    this.dataGrid = new DataGrid("Id","BotId","DatasetId","IsImmediate","ScheduleInfo","Status")
-    jobs.foreach(item => {
-      this.dataGrid.add(item.getId,item.getBotId,item.getDatasetId, item.getIsImmediate,item.getScheduleInfo, item.getStatus)
-    }
-    )
-    if (this.dataGrid.size > 0) {
-      this.dataGrid.render
-      System.out.println(this.dataGrid.size + " rows in set\n")
-    }
-    else System.out.println("Empty set\n")
-  }
-}
-@Command(name = "update", sortOptions = false,
-  description = Array(
-    "update job"),
-  footer = Array()
-)
-class RunUpdateJobCommand extends BaseSubCommand {
-
-  @Option(names = Array("-i", "--id"), description = Array("set the bot id"),required = true) private var jobId : String = ""
-  @Option(names = Array("-dId", "--datasetId"), description = Array("set the dataset id"),required = true) private var datasetId : String = ""
-  @Option(names = Array("-pId", "--projectId"), description = Array("set the project id"),required = true) private var projectId : String = ""
-  @Option(names = Array("-bId", "--botId"), description = Array("set the bot id"),required = true) private var botId : String = ""
-  @Option(names = Array("-isI", "--isImmediate"), description = Array("is immediate"),required = true) private var isImmediate : String = ""
-  @Option(names = Array("-m", "--minutes"), description = Array("set the minutes of schedule job"),required = true) private var minutes : String = ""
-  @Option(names = Array("-o", "--ours"), description = Array("set the ours of schedule job"),required = true) private var ours : String = ""
-  @Option(names = Array("-d", "--dayOfMonth"), description = Array("set the day of month of schedule job"),required = true) private var dayOfMonth : String = ""
-  @Option(names = Array("-mo", "--month"), description = Array("set the month of schedule job"),required = true) private var month : String = ""
-  @Option(names = Array("-dw", "--dayOfweek"), description = Array("set the day of week of schedule job"),required = true) private var dayOfweek : String = ""
-  @Option(names = Array("-y", "--year"), description = Array("set the year of schedule job"),required = true) private var year : String = ""
-
-  override def startRun(): Unit =
-  {
-    this.init()
-    var jobRequest : Update_jobRequest = new Update_jobRequest().sdkRequestConfig(this.getCustomSdkRequestConfig())
-    var job : Job = new Job()
-    job.setId(jobId)
-    var scheduleInfo = "cron("  + minutes + " " + ours + " " + dayOfMonth + " " + month+ " "  +  dayOfweek + " " + year + ")"
-    job.setScheduleInfo(scheduleInfo)
-    job.setIsImmediate(  isImmediate.toBoolean)
-    jobRequest.setProjectId(projectId)
-    jobRequest.setBotId(botId)
-    jobRequest.setJob(job)
-    sdkClient.update_job(jobRequest)
+    val path =
+      "/webrobot/api/projects/id/" + apiClient().escapeString(projectId) + "/jobs/" + apiClient().escapeString(jobId)
+    val node = OpenApiHttp.getJson(apiClient(), path)
+    JsonCliUtil.printJson(node)
   }
 }
 
-@Command(name = "add", sortOptions = false,
-  description = Array(
-    "Add new job"),
+@Command(
+  name = "add",
+  sortOptions = false,
+  description = Array("Aggiunge job (POST .../jobs)."),
   footer = Array(),
   subcommands = Array()
 )
 class RunAddJobCommand extends BaseSubCommand {
 
+  @Option(names = Array("-p", "--projectId"), description = Array("project id"), required = true)
+  private var projectId: String = ""
 
-  @Option(names = Array("-dId", "--datasetId"), description = Array("set the dataset id"),required = true) private var datasetId : String = ""
-  @Option(names = Array("-pId", "--projectId"), description = Array("set the project id"),required = true) private var projectId : String = ""
-  @Option(names = Array("-bId", "--botId"), description = Array("set the bot id"),required = true) private var botId : String = ""
-  //@Option(names = Array("-s", "--scheduleInfo"), description = Array("set the scheduleInfo of the job"),required = false) private var scheduleInfo : String = ""
-  @Option(names = Array("-isI", "--isImmediate"), description = Array("is immediate"),required = false) private var isImmediate : String = "False"
-  @Option(names = Array("-m", "--minutes"), description = Array("set the minutes of schedule job"),required = true) private var minutes : String = ""
-  @Option(names = Array("-o", "--ours"), description = Array("set the ours of schedule job"),required = true) private var ours : String = ""
-  @Option(names = Array("-d", "--dayOfMonth"), description = Array("set the day of month of schedule job"),required = true) private var dayOfMonth : String = ""
-  @Option(names = Array("-mo", "--month"), description = Array("set the month of schedule job"),required = true) private var month : String = ""
-  @Option(names = Array("-dw", "--dayOfweek"), description = Array("set the day of week of schedule job"),required = true) private var dayOfweek : String = ""
-  @Option(names = Array("-y", "--year"), description = Array("set the year of schedule job"),required = true) private var year : String = ""
-  override def startRun(): Unit =
-  {
+  @Option(names = Array("-n", "--name"), description = Array("nome job"), required = true)
+  private var name: String = ""
+
+  @Option(names = Array("-d", "--description"), description = Array("descrizione"))
+  private var description: String = ""
+
+  @Option(names = Array("-a", "--agentId"), description = Array("agent id"), required = true)
+  private var agentId: String = ""
+
+  @Option(names = Array("-i", "--inputDatasetId"), description = Array("dataset di input"), required = true)
+  private var inputDatasetId: String = ""
+
+  @Option(names = Array("--cloud-credential-id"), description = Array("JobDto.cloudCredentialId (opzionale)"))
+  private var cloudCredentialId: String = ""
+
+  @Option(names = Array("--job-type"), description = Array("BATCH o STREAMING (JobDto.jobType, opzionale)"))
+  private var jobType: String = ""
+
+  override def startRun(): Unit = {
     this.init()
-    var jobRequest : Create_jobRequest = new Create_jobRequest().sdkRequestConfig(this.getCustomSdkRequestConfig())
-    var job : Job = new Job()
-    var scheduleInfo = "cron("  + minutes + " " + ours + " " + dayOfMonth + " " + month+ " "  +  dayOfweek + " " + year + ")"
-    //scheduleInfo = "cron(26 16 * * ? *)"
-    job.setIsImmediate(  isImmediate.toBoolean)
-    job.setScheduleInfo(scheduleInfo)
-    jobRequest.setProjectId(projectId)
-    jobRequest.setBotId(botId)
-    jobRequest.setDatasetId(datasetId)
-    jobRequest.setJob(job)
-    sdkClient.create_job(jobRequest)
-
-
+    val dto = new JobDto()
+    dto.setProjectId(projectId)
+    dto.setName(name)
+    if (description != null) dto.setDescription(description)
+    dto.setAgentId(agentId)
+    dto.setInputDatasetId(inputDatasetId)
+    if (cloudCredentialId != null && cloudCredentialId.nonEmpty) dto.setCloudCredentialId(cloudCredentialId)
+    if (jobType != null && jobType.trim.nonEmpty) dto.setJobType(eu.webrobot.openapi.client.model.JobDto.JobTypeEnum.fromValue(jobType.trim.toUpperCase))
+    val path =
+      "/webrobot/api/projects/id/" + apiClient().escapeString(projectId) + "/jobs"
+    val node = OpenApiHttp.postJson(apiClient(), path, dto)
+    JsonCliUtil.printJson(node)
   }
 }
 
-@Command(name = "job", sortOptions = false,
+@Command(
+  name = "update",
+  sortOptions = false,
   description = Array(
-    "Manage WebRobot job (Insert,Update,Remove,List)"),
-  footer = Array(),
-  subcommands = Array(classOf[RunGetOutputJobCommand],classOf[RunGetListDatasetVersionsJobCommand],classOf[RunGetOutputJobPaginationCommand],classOf[RunAddJobCommand],classOf[RunUpdateJobCommand],classOf[RunListJobCommand],classOf[RunDeleteJobCommand])
+    "Aggiorna job (PUT .../jobs/{jobId}): GET stato corrente poi merge (evita di azzerare enabled/agent/dataset non passati)."
+  ),
+  footer = Array()
 )
-class RunJobCommand   extends Runnable  {
+class RunUpdateJobCommand extends BaseSubCommand {
+
+  @Option(names = Array("-p", "--projectId"), description = Array("project id"), required = true)
+  private var projectId: String = ""
+
+  @Option(names = Array("-j", "--jobId"), description = Array("job id"), required = true)
+  private var jobId: String = ""
+
+  @Option(names = Array("-n", "--name"), description = Array("nome"), required = true)
+  private var name: String = ""
+
+  @Option(names = Array("-d", "--description"), description = Array("descrizione (opzionale; se omesso resta il valore sul server)"))
+  private var description: String = ""
+
+  @Option(names = Array("-a", "--agentId"), description = Array("agent id (opzionale; solo se si vuole cambiare)"))
+  private var agentId: String = ""
+
+  @Option(names = Array("-i", "--inputDatasetId"), description = Array("dataset di input (opzionale; solo se si vuole cambiare)"))
+  private var inputDatasetId: String = ""
+
+  @Option(names = Array("--cloud-credential-id"), description = Array("cloudCredentialId (opzionale)"))
+  private var cloudCredentialId: String = ""
+
+  @Option(names = Array("-e", "--enabled"), description = Array("true|false (opzionale; se omesso resta il valore sul server)"))
+  private var enabledStr: String = ""
+
+  @Option(names = Array("--job-type"), description = Array("BATCH o STREAMING (opzionale)"))
+  private var jobType: String = ""
+
+  override def startRun(): Unit = {
+    this.init()
+    val path =
+      "/webrobot/api/projects/id/" + apiClient().escapeString(projectId) + "/jobs/" + apiClient().escapeString(jobId)
+    val cur = OpenApiHttp.getJson(apiClient(), path)
+    if (cur == null || cur.isNull || !cur.isObject)
+      throw new IllegalStateException("Impossibile leggere il job prima dell'update: " + cur)
+    val merged = cur.deepCopy().asInstanceOf[ObjectNode]
+    merged.put("id", jobId)
+    merged.put("projectId", projectId)
+    merged.put("name", name)
+    if (description != null) merged.put("description", description)
+    if (agentId != null && agentId.nonEmpty) merged.put("agentId", agentId)
+    if (inputDatasetId != null && inputDatasetId.nonEmpty) merged.put("inputDatasetId", inputDatasetId)
+    if (cloudCredentialId != null && cloudCredentialId.nonEmpty) merged.put("cloudCredentialId", cloudCredentialId)
+    if (enabledStr != null && enabledStr.trim.nonEmpty)
+      merged.put("enabled", java.lang.Boolean.parseBoolean(enabledStr.trim))
+    if (jobType != null && jobType.trim.nonEmpty)
+      merged.put("jobType", jobType.trim.toUpperCase)
+    OpenApiHttp.putJson(apiClient(), path, merged)
+  }
+}
+
+@Command(
+  name = "execute",
+  sortOptions = false,
+  description = Array("Esegue job (POST .../execute). Body JSON opzionale."),
+  footer = Array()
+)
+class RunExecuteJobCommand extends BaseSubCommand {
+
+  @Option(names = Array("-p", "--projectId"), description = Array("project id"), required = true)
+  private var projectId: String = ""
+
+  @Option(names = Array("-j", "--jobId"), description = Array("job id"), required = true)
+  private var jobId: String = ""
+
+  @Option(names = Array("-b", "--bodyJson"), description = Array("JSON body (default {})"))
+  private var bodyJson: String = ""
+
+  override def startRun(): Unit = {
+    this.init()
+    val path =
+      "/webrobot/api/projects/id/" + apiClient().escapeString(projectId) + "/jobs/" + apiClient().escapeString(
+        jobId
+      ) + "/execute"
+    val body =
+      if (bodyJson != null && bodyJson.trim.nonEmpty)
+        apiClient().getObjectMapper.readTree(bodyJson)
+      else JsonNodeFactory.instance.objectNode()
+    val node = OpenApiHttp.postJson(apiClient(), path, body)
+    JsonCliUtil.printJson(node)
+  }
+}
+
+@Command(
+  name = "stop",
+  sortOptions = false,
+  description = Array("Ferma job (POST .../stop)."),
+  footer = Array()
+)
+class RunStopJobCommand extends BaseSubCommand {
+
+  @Option(names = Array("-p", "--projectId"), description = Array("project id"), required = true)
+  private var projectId: String = ""
+
+  @Option(names = Array("-j", "--jobId"), description = Array("job id"), required = true)
+  private var jobId: String = ""
+
+  override def startRun(): Unit = {
+    this.init()
+    val path =
+      "/webrobot/api/projects/id/" + apiClient().escapeString(projectId) + "/jobs/" + apiClient().escapeString(
+        jobId
+      ) + "/stop"
+    val node = OpenApiHttp.postJson(apiClient(), path, JsonNodeFactory.instance.objectNode())
+    JsonCliUtil.printJson(node)
+  }
+}
+
+@Command(
+  name = "logs",
+  sortOptions = false,
+  description = Array("Log job (GET .../jobs/{jobId}/logs); query opzionali come in OpenAPI."),
+  footer = Array()
+)
+class RunJobLogsCommand extends BaseSubCommand {
+
+  @Option(names = Array("-p", "--projectId"), description = Array("project id"), required = true)
+  private var projectId: String = ""
+
+  @Option(names = Array("-j", "--jobId"), description = Array("job id"), required = true)
+  private var jobId: String = ""
+
+  @Option(names = Array("--task-id"), description = Array("query taskId (int64)"))
+  private var taskId: String = ""
+
+  @Option(names = Array("--pod-type"), description = Array("query podType"))
+  private var podType: String = ""
+
+  @Option(names = Array("--executor-index"), description = Array("query executorIndex (int)"))
+  private var executorIndex: String = ""
+
+  @Option(names = Array("--pod-name"), description = Array("query podName"))
+  private var podName: String = ""
+
+  @Option(names = Array("--tail"), description = Array("query tail (righe)"))
+  private var tail: String = ""
+
+  override def startRun(): Unit = {
+    this.init()
+    val path =
+      "/webrobot/api/projects/id/" + apiClient().escapeString(projectId) + "/jobs/" + apiClient().escapeString(
+        jobId
+      ) + "/logs"
+    val tuples = Seq(
+      scala.Option(taskId).filter(_.nonEmpty).map("taskId" -> _.asInstanceOf[AnyRef]),
+      scala.Option(podType).filter(_.nonEmpty).map("podType" -> _.asInstanceOf[AnyRef]),
+      scala.Option(executorIndex).filter(_.nonEmpty).map("executorIndex" -> _.asInstanceOf[AnyRef]),
+      scala.Option(podName).filter(_.nonEmpty).map("podName" -> _.asInstanceOf[AnyRef]),
+      scala.Option(tail).filter(_.nonEmpty).map("tail" -> _.asInstanceOf[AnyRef])
+    ).flatten
+    val qp = OpenApiHttp.pairs(apiClient(), tuples: _*)
+    val node =
+      if (tuples.isEmpty) OpenApiHttp.getJson(apiClient(), path)
+      else OpenApiHttp.getJson(apiClient(), path, qp)
+    JsonCliUtil.printJson(node)
+  }
+}
+
+@Command(
+  name = "job",
+  mixinStandardHelpOptions = true,
+  sortOptions = false,
+  description = Array("Job (REST OpenAPI /webrobot/api/projects/.../jobs/...)."),
+  footer = Array(),
+  subcommands = Array(
+    classOf[RunListJobCommand],
+    classOf[RunGetJobCommand],
+    classOf[RunAddJobCommand],
+    classOf[RunUpdateJobCommand],
+    classOf[RunDeleteJobCommand],
+    classOf[RunExecuteJobCommand],
+    classOf[RunStopJobCommand],
+    classOf[RunJobLogsCommand]
+  )
+)
+class RunJobCommand extends Runnable {
 
   def run(): Unit = {
-
-    println("Run Job Command:add|update|list|delete|getoutputpagination|getoutput|getlistdatasetversionsjob")
+    System.err.println(
+      "Uso: webrobot job <sottocomando>. Sottocomandi: list | get | add | update | delete | execute | stop | logs"
+    )
+    System.err.println("Esempio: webrobot job list -p <projectId>")
   }
 }

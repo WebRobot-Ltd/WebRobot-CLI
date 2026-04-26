@@ -2,45 +2,50 @@ package org.webrobot.cli
 
 import picocli.CommandLine.Command
 import org.webrobot.cli.commands.{
-  AgenticCommand,
-  RunBotCommand,
-  RunConceptCommand,
+  RunAgentCommand,
+  RunCategoryCommand,
   RunDatasetCommand,
   RunImportExportCommand,
   RunJobCommand,
-  RunProjectCommand,
-  RunScriptCommand
+  RunProjectCommand
 }
 
+/** Radice Picocli: `project`, `category`, `agent`, `job`, `dataset`, `package`. */
 @Command(
   name = "webrobot",
   mixinStandardHelpOptions = true,
   version = Array("webrobot-cli 0.3"),
   sortOptions = false,
   description = Array(
-    "CLI WebRobot: comandi su progetto, bot, dataset, job, script, concept, import/export.",
-    "Usa il client legacy AWS API Gateway (webrobot.eu:org.webrobot.sdk) verso l'API Jersey.",
+    "CLI WebRobot: comandi su progetto, category (categorie job), agent, dataset, job, package (import/export).",
+    "Gruppo `agentic` (backend FastAPI separato) non incluso finché il flusso ETL non è completato.",
+    "Gruppi dismessi (non esposti): page, concept, script (vecchia API Gateway / wrapper).",
+    "Client API: JAR webrobot.eu:org.webrobot.sdk:0.3 da GitHub Packages (repository WebRobot-Ltd/webrobot-sdk).",
     "Endpoint API: chiave `api_endpoint` in config (default https://api.webrobot.eu).",
-    "SDK Maven: GitHub Packages WebRobot-Ltd/webrobot-sdk (stesso groupId/artifactId/versione del pom)."
+    "Percorso artifact sul registry: webrobot/eu/org.webrobot.sdk/0.3/org.webrobot.sdk-0.3.jar."
   ),
   footer = Array(
     "",
+    "Gruppi: project | category | agent | job | dataset | package",
     "Esempi:",
     "  webrobot project list",
-    "  webrobot project get -n <projectId>",
+    "  webrobot project get -i <projectId>",
     "  webrobot project schedule-get -i <projectId>",
+    "  webrobot category list",
+    "  webrobot agent list -c <categoryId>",
+    "  webrobot dataset list",
+    "  webrobot dataset get -d <datasetId>",
+    "  webrobot package exportall -f /tmp/export.zip",
     "",
-    "Opzioni globali: -h / --help, -V / --version"
+    "Opzioni globali: -h / --help, -V / --version (help anche per gruppo: webrobot project --help)"
   ),
   subcommands = Array(
     classOf[RunProjectCommand],
-    classOf[RunBotCommand],
+    classOf[RunCategoryCommand],
+    classOf[RunAgentCommand],
     classOf[RunJobCommand],
-    classOf[RunScriptCommand],
     classOf[RunDatasetCommand],
-    classOf[RunConceptCommand],
-    classOf[RunImportExportCommand],
-    classOf[AgenticCommand]
+    classOf[RunImportExportCommand]
   )
 )
 class WebRobotCliCommand extends Runnable {

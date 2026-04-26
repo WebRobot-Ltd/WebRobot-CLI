@@ -7,7 +7,7 @@ import picocli.CommandLine
 
 /**
  * Entry point: carica `config.cfg` (directory corrente) o fallback su classpath `config.cfg`,
- * poi esegue Picocli (stesso modello di utilizzo dei subcommand `project`, `bot`, …).
+ * poi esegue Picocli (subcommand `project`, `agent`, `dataset`, …). SDK: webrobot.eu:org.webrobot.sdk da GitHub Packages.
  */
 object RunWebRobotCli extends App {
 
@@ -25,7 +25,6 @@ object RunWebRobotCli extends App {
             credentials {
               apikey = ""
               api_endpoint = "https://api.webrobot.eu"
-              agentic_base_url = "http://localhost:5000"
             }
           }""")
       }

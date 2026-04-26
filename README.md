@@ -1,3 +1,10 @@
+# webrobot-cli
+
+Documentazione comandi e parametri (allineata all’OpenAPI in **WebRobot.Sdk**): [docs/CLI-COMMANDS.md](docs/CLI-COMMANDS.md).  
+Verifica parità opzioni ↔ API e roadmap helper pipeline: [docs/CLI-API-PARITY.md](docs/CLI-API-PARITY.md).
+
+---
+
 # Building the client
 Before proceeding, install a [JDK](https://docs.oracle.com/javase/8/docs/technotes/guides/install/install_overview.html) (must be Java 8 or later) and [Apache Maven](https://maven.apache.org/install.html).
 

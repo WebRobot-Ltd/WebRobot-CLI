@@ -10,24 +10,25 @@
     <properties>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
+        <!-- SDK pubblicato come webrobot/eu/org.webrobot.sdk/${webrobot.sdk.version}/org.webrobot.sdk-${webrobot.sdk.version}.jar su GitHub Packages -->
+        <webrobot.sdk.version>0.3</webrobot.sdk.version>
     </properties>
 
     <repositories>
-        <!-- org.webrobot.sdk pubblicato su GitHub Packages (allineato a webrobot-etl-api / Jersey) -->
+        <!--
+          L'id DEVE coincidere con <server><id> in ~/.m2/settings.xml (PAT GitHub) e con Jenkins withMaven
+          (stesso id usato da WebRobot.Sdk in distributionManagement: webrobot-ltd-repository).
+        -->
         <repository>
             <id>webrobot-ltd-repository</id>
-            <name>GitHub Packages (webrobot-sdk)</name>
+            <name>GitHub Packages — webrobot.eu:org.webrobot.sdk</name>
             <url>https://maven.pkg.github.com/WebRobot-Ltd/webrobot-sdk</url>
-        </repository>
-        <repository>
-            <id>webrobot-repository</id>
-            <name>AWS Release Repository</name>
-            <url>s3://webrobot-repository/repo/release</url>
-        </repository>
-        <repository>
-            <id>webrobot-repository-snapshot</id>
-            <name>AWS Snapshot Repository</name>
-            <url>s3://webrobot-repository/repo/snapshot</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
         </repository>
     </repositories>
 
@@ -38,14 +39,6 @@
                 <directory>resources</directory>
             </resource>
         </resources>
-
-        <extensions>
-            <extension>
-                <groupId>org.kuali.maven.wagons</groupId>
-                <artifactId>maven-s3-wagon</artifactId>
-                <version>1.2.1</version>
-            </extension>
-        </extensions>
 
         <plugins>
 
@@ -152,10 +145,11 @@
             <artifactId>config</artifactId>
             <version>1.2.0</version>
         </dependency>
+        <!-- webrobot.eu:org.webrobot.sdk:0.3 — JAR org.webrobot.sdk-0.3.jar (path Maven: webrobot/eu/org.webrobot.sdk/0.3/) -->
         <dependency>
-            <artifactId>org.webrobot.sdk</artifactId>
             <groupId>webrobot.eu</groupId>
-            <version>0.3</version>
+            <artifactId>org.webrobot.sdk</artifactId>
+            <version>${webrobot.sdk.version}</version>
         </dependency>
 
         <dependency>
@@ -201,17 +195,5 @@
         </dependency>
 
     </dependencies>
-
-    <distributionManagement>
-        <snapshotRepository>
-            <id>webrobot-repository-snapshot</id>
-            <url>s3://webrobot-repository/repo/snapshot</url>
-        </snapshotRepository>
-        <repository>
-            <id>webrobot-repository</id>
-            <url>s3://webrobot-repository/repo/release</url>
-        </repository>
-    </distributionManagement>
-
 
 </project>
