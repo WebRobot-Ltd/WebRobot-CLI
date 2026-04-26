@@ -131,9 +131,20 @@ class BaseSubCommand extends Runnable {
     ""
   }
 
-  protected  def init() : Unit =
-  {
-    sdkClient = WebRobotCliSdk.builder()
+  protected def resolveApiEndpoint(): String = {
+    val defaultEndpoint = "https://api.webrobot.eu"
+    try {
+      if (RunWebRobotCli.config != null && RunWebRobotCli.config.hasPath("api_endpoint")) {
+        val ep = RunWebRobotCli.config.getString("api_endpoint")
+        if (ep != null && ep.trim.nonEmpty) return ep.trim
+      }
+    } catch { case _: Throwable => () }
+    defaultEndpoint
+  }
+
+  protected def init(): Unit = {
+    val builder = WebRobotCliSdk.builder()
+      .endpoint(resolveApiEndpoint())
       .connectionConfiguration(
         new ConnectionConfiguration()
           .maxConnections(100)
@@ -143,7 +154,7 @@ class BaseSubCommand extends Runnable {
           .httpRequestTimeout(29000)
           .totalExecutionTimeout(29000)
           .socketTimeout(29000))
-      .build();
+    sdkClient = builder.build()
     dataGrid = new DataGrid()
   }
 

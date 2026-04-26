@@ -1,6 +1,6 @@
-# Sensitive/local config (do not commit)
-config.cfg
-config.local.cfg
+# Sensitive/local config (solo root workspace; resources/config.cfg è template in repo)
+/config.cfg
+/config.local.cfg
 
 # Build artifacts
 /target/

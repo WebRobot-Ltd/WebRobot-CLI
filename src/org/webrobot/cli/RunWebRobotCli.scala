@@ -1,27 +1,38 @@
 package org.webrobot.cli
-import picocli.CommandLine
-import picocli.CommandLine.{Command, IVersionProvider, Option, Parameters}
+
 import java.io.File
 
 import com.typesafe.config.{Config, ConfigFactory}
-
-import collection.JavaConverters._
 import picocli.CommandLine
 
+/**
+ * Entry point: carica `config.cfg` (directory corrente) o fallback su classpath `config.cfg`,
+ * poi esegue Picocli (stesso modello di utilizzo dei subcommand `project`, `bot`, …).
+ */
 object RunWebRobotCli extends App {
-  private var webrobotCliCommand : WebRobotCliCommand = new WebRobotCliCommand();
-  val commandLine = new CommandLine(webrobotCliCommand)
-  var str_args : Array[String] =  args.toArray[String]
-  val myConfigFile = new File("config.cfg")
-  var config : Config = null
-  if(myConfigFile.exists()) {
-    val fileConfig = ConfigFactory.parseFile(myConfigFile)
-    config = ConfigFactory.load(fileConfig)
-    config = config.getConfig("webrobot.api.gateway").getConfig("credentials")
-    val parsed = commandLine.parseWithHandler(new CommandLine.RunAll, args)
+
+  /** Nodo `webrobot.api.gateway.credentials` usato da [[org.webrobot.cli.commands.BaseSubCommand]]. */
+  var config: Config = _
+
+  private def loadCredentialsConfig(): Config = {
+    val local = new File("config.cfg")
+    val root =
+      if (local.exists()) ConfigFactory.parseFile(local)
+      else if (getClass.getResource("/config.cfg") != null) ConfigFactory.parseResources("config.cfg")
+      else {
+        ConfigFactory.parseString(
+          """webrobot.api.gateway {
+            credentials {
+              apikey = ""
+              api_endpoint = "https://api.webrobot.eu"
+              agentic_base_url = "http://localhost:5000"
+            }
+          }""")
+      }
+    ConfigFactory.load(root).getConfig("webrobot.api.gateway").getConfig("credentials")
   }
-  else
-    {
-      print("The config file is not present in the application path")
-    }
+
+  config = loadCredentialsConfig()
+  val exitCode = new CommandLine(new WebRobotCliCommand()).execute(args: _*)
+  sys.exit(exitCode)
 }

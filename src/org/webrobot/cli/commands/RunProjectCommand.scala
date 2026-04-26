@@ -2,7 +2,7 @@ package org.webrobot.cli.commands
 import java.time.DateTimeException
 
 import picocli.CommandLine.{Command, Option}
-import WebRobot.Cli.Sdk.model.{Create_projectRequest, Delete_projectRequest, Get_all_projectsRequest, Get_all_projectsResult, Get_projectRequest, Get_projectResult, Project, Update_projectRequest}
+import WebRobot.Cli.Sdk.model.{Create_projectRequest, Delete_projectRequest, Get_all_projectsRequest, Get_all_projectsResult, Get_projectRequest, Get_projectResult, Get_project_scheduleRequest, Get_project_scheduleResult, Project, ProjectSchedule, Set_project_scheduleRequest, Set_project_scheduleResult, Update_projectRequest}
 import com.amazonaws.opensdk.SdkRequestConfig
 import com.amazonaws.opensdk.config.{ConnectionConfiguration, TimeoutConfiguration}
 import org.webrobot.cli.RunWebRobotCli
@@ -135,17 +135,98 @@ class RunAddProjectCommand extends BaseSubCommand {
   }
 }
 
+@Command(name = "schedule-get", sortOptions = false,
+  description = Array("get project ETL schedule (GET /projects/id/{id}/schedule)"),
+  footer = Array()
+)
+class RunGetProjectScheduleCommand extends BaseSubCommand {
+
+  @Option(names = Array("-i", "--projectId"), description = Array("project id"), required = true)
+  private var projectId: String = ""
+
+  override def startRun(): Unit = {
+    this.init()
+    val req = new Get_project_scheduleRequest().sdkRequestConfig(this.getCustomSdkRequestConfig())
+    req.setProjectId(projectId)
+    val result: Get_project_scheduleResult = sdkClient.get_project_schedule(req)
+    val s = result.getSchedule
+    if (s == null) {
+      System.out.println("(no schedule payload)")
+      return
+    }
+    System.out.println(
+      s"""projectId=${scala.Option(s.getProjectId).getOrElse("")}
+         |cronSchedule=${scala.Option(s.getCronSchedule).getOrElse("")}
+         |enabled=${scala.Option(s.getEnabled).map(_.booleanValue).getOrElse(false)}
+         |timezone=${scala.Option(s.getTimezone).getOrElse("")}
+         |jobId=${scala.Option(s.getJobId).getOrElse("")}
+         |cronJobName=${scala.Option(s.getCronJobName).getOrElse("")}
+         |cronJobActive=${scala.Option(s.getCronJobActive).map(_.booleanValue).getOrElse(false)}
+         |nextExecution=${scala.Option(s.getNextExecution).getOrElse("")}
+         |message=${scala.Option(s.getMessage).getOrElse("")}
+         |""".stripMargin)
+  }
+}
+
+@Command(name = "schedule-set", sortOptions = false,
+  description = Array("set project ETL schedule (PUT /projects/id/{id}/schedule); maps to Jersey ProjectScheduleRequest"),
+  footer = Array()
+)
+class RunSetProjectScheduleCommand extends BaseSubCommand {
+
+  @Option(names = Array("-i", "--projectId"), description = Array("project id"), required = true)
+  private var projectId: String = ""
+
+  @Option(names = Array("-j", "--jobId"), description = Array("job id (jobs.id) when schedule is enabled"))
+  private var jobId: String = ""
+
+  @Option(names = Array("-c", "--cron"), description = Array("cron expression (default 0 0 * * *)"))
+  private var cron: String = "0 0 * * *"
+
+  @Option(names = Array("-e", "--enabled"), description = Array("true|false (default true)"))
+  private var enabledStr: String = "true"
+
+  @Option(names = Array("-z", "--timezone"), description = Array("IANA or label (default UTC)"))
+  private var timezone: String = "UTC"
+
+  @Option(names = Array("--execution-json"), description = Array("optional JSON string for execute POST body"))
+  private var executionJson: String = ""
+
+  override def startRun(): Unit = {
+    this.init()
+    val enabled = java.lang.Boolean.parseBoolean(enabledStr)
+    val sch = new ProjectSchedule()
+    sch.setCronSchedule(cron)
+    sch.setEnabled(java.lang.Boolean.valueOf(enabled))
+    sch.setTimezone(timezone)
+    if (jobId != null && jobId.nonEmpty) sch.setJobId(jobId)
+    if (executionJson != null && executionJson.nonEmpty) sch.setExecutionRequestJson(executionJson)
+
+    val req = new Set_project_scheduleRequest().sdkRequestConfig(this.getCustomSdkRequestConfig())
+    req.setProjectId(projectId)
+    req.setSchedule(sch)
+    val result: Set_project_scheduleResult = sdkClient.set_project_schedule(req)
+    val s = result.getSchedule
+    if (s != null) {
+      System.out.println(scala.Option(s.getMessage).getOrElse("OK"))
+      if (s.getCronJobName != null) System.out.println("cronJobName=" + s.getCronJobName)
+    } else System.out.println("OK")
+  }
+}
 
 @Command(name = "project", sortOptions = false,
   description = Array(
     "Manage WebRobot Projects (Insert,Update,Remove,List)"),
   footer = Array(),
 
-  subcommands = Array(classOf[RunAddProjectCommand],classOf[RunGetProjectCommand],classOf[RunUpdateProjectCommand],classOf[RunListProjectCommand],classOf[RunDeleteProjectCommand])
+  subcommands = Array(classOf[RunAddProjectCommand], classOf[RunGetProjectCommand], classOf[RunUpdateProjectCommand], classOf[RunListProjectCommand], classOf[RunDeleteProjectCommand], classOf[RunGetProjectScheduleCommand], classOf[RunSetProjectScheduleCommand])
 )
 class RunProjectCommand   extends Runnable  {
 
   def run(): Unit = {
-    println("Run Project Command: add|update|list|delete|get")
+    System.err.println(
+      "Uso: webrobot project <sottocomando>. Sottocomandi: add | get | update | list | delete | schedule-get | schedule-set"
+    )
+    System.err.println("Esempio: webrobot project list")
   }
 }

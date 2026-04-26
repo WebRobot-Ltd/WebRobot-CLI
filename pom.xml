@@ -13,6 +13,12 @@
     </properties>
 
     <repositories>
+        <!-- org.webrobot.sdk pubblicato su GitHub Packages (allineato a webrobot-etl-api / Jersey) -->
+        <repository>
+            <id>webrobot-ltd-repository</id>
+            <name>GitHub Packages (webrobot-sdk)</name>
+            <url>https://maven.pkg.github.com/WebRobot-Ltd/webrobot-sdk</url>
+        </repository>
         <repository>
             <id>webrobot-repository</id>
             <name>AWS Release Repository</name>
@@ -27,7 +33,11 @@
 
     <build>
         <sourceDirectory>src</sourceDirectory>
-
+        <resources>
+            <resource>
+                <directory>resources</directory>
+            </resource>
+        </resources>
 
         <extensions>
             <extension>
