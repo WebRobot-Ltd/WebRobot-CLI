@@ -1,0 +1,66 @@
+# Pubblica l'uber-jar come asset di una GitHub Release → URL pubblico anonimo, es.:
+#   https://github.com/WebRobot-Ltd/WebRobot-CLI/releases/latest/download/webrobot-cli-uber.jar
+# (funziona se l'asset si chiama esattamente webrobot-cli-uber.jar nella release più recente)
+#
+# Secrets repository (Settings → Secrets → Actions):
+#   GH_PACKAGES_USER   tipicamente: x-access-token
+#   GH_PACKAGES_TOKEN  PAT con read:packages (per risolvere webrobot.eu:org.webrobot.sdk da GPR)
+#
+name: Release CLI uber-jar
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag release GitHub (es. v0.3.12). La release viene creata/aggiornata con questo tag."
+        required: true
+        type: string
+      webrobot_sdk_version:
+        description: "Versione Maven SDK su GPR (-Dwebrobot.sdk.depversion)"
+        required: true
+        default: "0.3.10"
+        type: string
+      cli_revision:
+        description: "Versione Maven del modulo CLI (-Drevision)"
+        required: true
+        default: "0.3.12"
+        type: string
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          server-id: webrobot-ltd-repository
+          server-username: ${{ secrets.GH_PACKAGES_USER }}
+          server-password: ${{ secrets.GH_PACKAGES_TOKEN }}
+
+      - name: Build uber-jar
+        run: |
+          mvn -B -ntp package -DskipTests \
+            "-Drevision=${{ inputs.cli_revision }}" \
+            "-Dwebrobot.sdk.depversion=${{ inputs.webrobot_sdk_version }}"
+          UBER="$(ls target/org.webrobot.eu.spark.job-*-uber.jar | head -1)"
+          test -n "$UBER"
+          cp -f "$UBER" target/webrobot-cli-uber.jar
+          ls -la target/webrobot-cli-uber.jar
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: WebRobot CLI ${{ inputs.release_tag }}
+          files: target/webrobot-cli-uber.jar
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

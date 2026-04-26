@@ -2,7 +2,10 @@
 # Installa la CLI WebRobot (uber-jar) da WEBROBOT_CLI_JAR_URL e crea il wrapper `webrobot` sotto PREFIX.
 #
 # Obbligatorio:
-#   WEBROBOT_CLI_JAR_URL   URL HTTP(S) diretto al .jar (curl; per token Bearer usa header custom o URL firmato).
+#   WEBROBOT_CLI_JAR_URL   URL HTTP(S) diretto al .jar (curl).
+#   URL pubblico senza token: asset GitHub Release con nome fisso, es.
+#   https://github.com/WebRobot-Ltd/WebRobot-CLI/releases/latest/download/webrobot-cli-uber.jar
+#   (pubblicazione: workflow .github/workflows/release-cli-jar.yml su GitHub Actions)
 #
 # Opzionale:
 #   PREFIX                     default: $HOME/.local  (jar in PREFIX/share/webrobot-cli, bin in PREFIX/bin)
