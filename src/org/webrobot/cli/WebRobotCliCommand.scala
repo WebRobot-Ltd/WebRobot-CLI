@@ -2,49 +2,80 @@ package org.webrobot.cli
 
 import picocli.CommandLine.Command
 import org.webrobot.cli.commands.{
+  RunAdminCommand,
   RunAgentCommand,
+  RunAiProvidersCommand,
+  RunAuthCommand,
+  RunBillingCommand,
   RunCategoryCommand,
+  RunCloudCommand,
+  RunCloudCredentialsCommand,
   RunDatasetCommand,
+  RunDatasetLegacyCommand,
+  RunExecutionCommand,
   RunImportExportCommand,
   RunJobCommand,
-  RunProjectCommand
+  RunProjectCommand,
+  RunPythonExtCommand,
+  RunTaskCommand
 }
 
-/** Radice Picocli: `project`, `category`, `agent`, `job`, `dataset`, `package`. */
+/** Radice Picocli — allineata all'OpenAPI https://api.webrobot.eu/api/openapi.json (138 path). */
 @Command(
   name = "webrobot",
   mixinStandardHelpOptions = true,
   version = Array("webrobot-cli 0.3"),
   sortOptions = false,
   description = Array(
-    "CLI WebRobot: comandi su progetto, category (categorie job), agent, dataset, job, package (import/export).",
-    "Gruppo `agentic` (backend FastAPI separato) non incluso finché il flusso ETL non è completato.",
-    "Gruppi dismessi (non esposti): page, concept, script (vecchia API Gateway / wrapper).",
-    "Client API: JAR webrobot.eu:org.webrobot.sdk:0.3.10 da GitHub Packages (repository WebRobot-Ltd/webrobot-sdk).",
-    "Endpoint API: chiave `api_endpoint` in config (default https://api.webrobot.eu).",
-    "Percorso artifact sul registry: webrobot/eu/org.webrobot.sdk/0.3.10/org.webrobot.sdk-0.3.10.jar."
+    "CLI WebRobot — allineata all'API https://api.webrobot.eu (spec OpenAPI 138 path).",
+    "Endpoint: chiave `api_endpoint` in config.cfg (default https://api.webrobot.eu).",
+    "Auth: `apikey` (X-API-Key) oppure `jwt` (Bearer) in config.cfg."
   ),
   footer = Array(
     "",
-    "Gruppi: project | category | agent | job | dataset | package",
-    "Esempi:",
-    "  webrobot project list",
-    "  webrobot project get -i <projectId>",
-    "  webrobot project schedule-get -i <projectId>",
-    "  webrobot category list",
-    "  webrobot agent list -c <categoryId>",
-    "  webrobot dataset list",
-    "  webrobot dataset get -d <datasetId>",
-    "  webrobot package exportall -f /tmp/export.zip",
+    "Gruppi disponibili:",
+    "  ETL Core:          project | category | agent | job | task | execution",
+    "  Dati:              dataset | datasets-legacy | cloud-credentials",
+    "  Identità & accesso:auth | billing",
+    "  Infrastruttura:    cloud | admin",
+    "  AI & estensioni:   ai-providers | python-ext",
+    "  Pacchetti:         package",
     "",
-    "Opzioni globali: -h / --help, -V / --version (help anche per gruppo: webrobot project --help)"
+    "Esempi rapidi:",
+    "  webrobot project list",
+    "  webrobot job execute -p <projectId> -j <jobId>",
+    "  webrobot task list -p <projectId> -j <jobId>",
+    "  webrobot cloud-credentials list --provider hetzner",
+    "  webrobot auth me",
+    "  webrobot cloud spark-info",
+    "  webrobot admin system-logs --level ERROR --tail 100",
+    "  webrobot python-ext list -a <agentId>",
+    "  webrobot ai-providers list",
+    "",
+    "Per help su un gruppo: webrobot <gruppo> --help"
   ),
   subcommands = Array(
+    // ETL core
     classOf[RunProjectCommand],
     classOf[RunCategoryCommand],
     classOf[RunAgentCommand],
     classOf[RunJobCommand],
+    classOf[RunTaskCommand],
+    classOf[RunExecutionCommand],
+    // Dati
     classOf[RunDatasetCommand],
+    classOf[RunDatasetLegacyCommand],
+    classOf[RunCloudCredentialsCommand],
+    // Identità & accesso
+    classOf[RunAuthCommand],
+    classOf[RunBillingCommand],
+    // Infrastruttura
+    classOf[RunCloudCommand],
+    classOf[RunAdminCommand],
+    // AI & estensioni
+    classOf[RunAiProvidersCommand],
+    classOf[RunPythonExtCommand],
+    // Pacchetti
     classOf[RunImportExportCommand]
   )
 )

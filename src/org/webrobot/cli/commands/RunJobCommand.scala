@@ -296,6 +296,29 @@ class RunJobLogsCommand extends BaseSubCommand {
 }
 
 @Command(
+  name = "metrics",
+  sortOptions = false,
+  description = Array("Metriche job (GET .../jobs/{jobId}/metrics)."),
+  footer = Array()
+)
+class RunJobMetricsCommand extends BaseSubCommand {
+
+  @Option(names = Array("-p", "--projectId"), description = Array("project id"), required = true)
+  private var projectId: String = ""
+
+  @Option(names = Array("-j", "--jobId"), description = Array("job id"), required = true)
+  private var jobId: String = ""
+
+  override def startRun(): Unit = {
+    this.init()
+    val path =
+      "/webrobot/api/projects/id/" + apiClient().escapeString(projectId) + "/jobs/" + apiClient().escapeString(jobId) + "/metrics"
+    val node = OpenApiHttp.getJson(apiClient(), path)
+    JsonCliUtil.printJson(node)
+  }
+}
+
+@Command(
   name = "job",
   mixinStandardHelpOptions = true,
   sortOptions = false,
@@ -309,14 +332,15 @@ class RunJobLogsCommand extends BaseSubCommand {
     classOf[RunDeleteJobCommand],
     classOf[RunExecuteJobCommand],
     classOf[RunStopJobCommand],
-    classOf[RunJobLogsCommand]
+    classOf[RunJobLogsCommand],
+    classOf[RunJobMetricsCommand]
   )
 )
 class RunJobCommand extends Runnable {
 
   def run(): Unit = {
     System.err.println(
-      "Uso: webrobot job <sottocomando>. Sottocomandi: list | get | add | update | delete | execute | stop | logs"
+      "Uso: webrobot job <sottocomando>. Sottocomandi: list | get | add | update | delete | execute | stop | logs | metrics"
     )
     System.err.println("Esempio: webrobot job list -p <projectId>")
   }
