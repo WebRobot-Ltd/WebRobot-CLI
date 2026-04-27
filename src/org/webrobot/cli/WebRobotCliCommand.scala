@@ -15,6 +15,8 @@ import org.webrobot.cli.commands.{
   RunExecutionCommand,
   RunImportExportCommand,
   RunJobCommand,
+  RunManifestCommand,
+  RunPipelineCommand,
   RunProjectCommand,
   RunPythonExtCommand,
   RunTaskCommand
@@ -34,6 +36,7 @@ import org.webrobot.cli.commands.{
   footer = Array(
     "",
     "Gruppi disponibili:",
+    "  Manifest:          manifest | pipeline",
     "  ETL Core:          project | category | agent | job | task | execution",
     "  Dati:              dataset | datasets-legacy | cloud-credentials",
     "  Identità & accesso:auth | billing",
@@ -55,6 +58,9 @@ import org.webrobot.cli.commands.{
     "Per help su un gruppo: webrobot <gruppo> --help"
   ),
   subcommands = Array(
+    // Manifest
+    classOf[RunManifestCommand],
+    classOf[RunPipelineCommand],
     // ETL core
     classOf[RunProjectCommand],
     classOf[RunCategoryCommand],

@@ -1,0 +1,548 @@
+{
+  "version": "1.0.0",
+  "stages": [
+    {
+      "name": "explore",
+      "extensionType": "source",
+      "category": "crawling",
+      "description": "Breadth-first link discovery and crawling",
+      "args": [
+        { "name": "selector", "type": "string", "required": true, "description": "CSS selector for links (or $column reference)" },
+        { "name": "depth", "type": "int", "required": false, "description": "Maximum crawl depth (default: 1)" }
+      ],
+      "example": "- stage: explore\n  args: [\"a.category-link\", 2]"
+    },
+    {
+      "name": "join",
+      "extensionType": "source",
+      "category": "crawling",
+      "description": "Follow links for each row using HTTP (wget)",
+      "args": [
+        { "name": "selector", "type": "string", "required": true, "description": "CSS selector for links (or $column reference)" },
+        { "name": "joinType", "type": "string", "required": false, "description": "Inner or LeftOuter (default: LeftOuter)" }
+      ],
+      "example": "- stage: join\n  args: [\"a.product-link\", \"LeftOuter\"]"
+    },
+    {
+      "name": "wgetJoin",
+      "aliases": ["wget_join"],
+      "extensionType": "source",
+      "category": "crawling",
+      "description": "Follow links using the wgetJoin primitive",
+      "args": [
+        { "name": "selector", "type": "string", "required": true, "description": "CSS selector for links" },
+        { "name": "joinType", "type": "string", "required": false, "description": "Inner or LeftOuter (default: LeftOuter)" }
+      ],
+      "example": "- stage: wgetJoin\n  args: [\"a.detail-link\", \"LeftOuter\"]"
+    },
+    {
+      "name": "wgetExplore",
+      "aliases": ["wget_explore"],
+      "extensionType": "source",
+      "category": "crawling",
+      "description": "Breadth-first crawling using the wgetExplore primitive",
+      "args": [
+        { "name": "selector", "type": "string", "required": true, "description": "CSS selector for links" },
+        { "name": "depth", "type": "int", "required": false, "description": "Maximum depth (default: 1)" }
+      ],
+      "example": "- stage: wgetExplore\n  args: [\"li.next a\", 2]"
+    },
+    {
+      "name": "visit",
+      "extensionType": "source",
+      "category": "crawling",
+      "description": "Fetch a URL from a column using browser automation (JavaScript-rendered)",
+      "args": [
+        { "name": "urlExtractor", "type": "string", "required": false, "description": "URL extractor column (default: $url)" }
+      ],
+      "example": "- stage: visit\n  args: [\"$url\"]"
+    },
+    {
+      "name": "wget",
+      "aliases": ["fetch"],
+      "extensionType": "source",
+      "category": "crawling",
+      "description": "Fetch a URL from a column using HTTP",
+      "args": [
+        { "name": "urlExtractor", "type": "string", "required": false, "description": "URL extractor column (default: $url)" }
+      ],
+      "example": "- stage: wget\n  args: [\"$url\"]"
+    },
+    {
+      "name": "visitJoin",
+      "extensionType": "source",
+      "category": "crawling",
+      "description": "Follow links using browser automation for each row",
+      "args": [
+        { "name": "selector", "type": "string", "required": true, "description": "Selector or $column containing URLs" },
+        { "name": "joinType", "type": "string", "required": false, "description": "Inner or LeftOuter (default: LeftOuter)" }
+      ],
+      "example": "- stage: visitJoin\n  args: [\"a.product-link\", \"LeftOuter\"]"
+    },
+    {
+      "name": "visitExplore",
+      "extensionType": "source",
+      "category": "crawling",
+      "description": "Breadth-first crawling using browser automation",
+      "args": [
+        { "name": "selector", "type": "string", "required": true, "description": "Selector or $column containing URLs" },
+        { "name": "depth", "type": "int", "required": false, "description": "Maximum depth (default: 1)" }
+      ],
+      "example": "- stage: visitExplore\n  args: [\"li.next a\", 2]"
+    },
+    {
+      "name": "extract",
+      "extensionType": "transformation",
+      "category": "extraction",
+      "description": "Extract fields using selector-map configuration",
+      "args": [
+        { "name": "extractors", "type": "list<map>", "required": true, "description": "List of {selector, method, as} extractor maps" }
+      ],
+      "example": "- stage: extract\n  args:\n    - { selector: \"h1\", method: \"text\", as: \"title\" }\n    - { selector: \"span.price\", method: \"price\", as: \"price_numeric\" }"
+    },
+    {
+      "name": "flatSelect",
+      "aliases": ["widen"],
+      "extensionType": "transformation",
+      "category": "extraction",
+      "description": "Segment HTML block and create one row per segment (requires example-plugin)",
+      "args": [
+        { "name": "segmentSelector", "type": "string", "required": true, "description": "CSS selector for segments" },
+        { "name": "extractors", "type": "list<map>", "required": false, "description": "Extractor maps applied inside each segment" }
+      ],
+      "example": "- stage: flatSelect\n  args:\n    - \"div.product\"\n    - - { selector: \"h3\", method: \"text\", as: \"name\" }"
+    },
+    {
+      "name": "intelligent_explore",
+      "extensionType": "transformation",
+      "category": "intelligent",
+      "description": "Like explore, but uses LLM to infer selector from natural language prompt",
+      "args": [
+        { "name": "prompt", "type": "string", "required": true, "description": "Natural language description of target links" },
+        { "name": "depth", "type": "int", "required": false, "description": "Maximum depth (default: 1)" }
+      ],
+      "example": "- stage: intelligent_explore\n  args: [\"category links\", 2]"
+    },
+    {
+      "name": "intelligent_join",
+      "aliases": ["intelligentJoin"],
+      "extensionType": "transformation",
+      "category": "intelligent",
+      "description": "Join with LLM-inferred selector and actions",
+      "args": [
+        { "name": "selectorPrompt", "type": "string", "required": false, "description": "Selector prompt or 'auto'" },
+        { "name": "actionPrompt", "type": "string", "required": false, "description": "Action prompt or 'none'" },
+        { "name": "limit", "type": "int", "required": false, "description": "Maximum rows to join" }
+      ],
+      "example": "- stage: intelligent_join\n  args: [\"auto\", \"click product link\", 20]"
+    },
+    {
+      "name": "iextract",
+      "extensionType": "transformation",
+      "category": "intelligent",
+      "description": "LLM extraction on HTML block with chunking, produces multiple columns",
+      "args": [
+        { "name": "prompt", "type": "string", "required": true, "description": "Extraction prompt" },
+        { "name": "prefix", "type": "string", "required": false, "description": "Output column prefix" }
+      ],
+      "example": "- stage: iextract\n  args: [\"Extract product title, price and sku\", \"prod_\"]"
+    },
+    {
+      "name": "intelligent_flatSelect",
+      "aliases": ["intelligentFlatSelect"],
+      "extensionType": "transformation",
+      "category": "intelligent",
+      "description": "Segmentation and multi-row extraction with LLM-inferred selector (uses template caching + RoadRunner)",
+      "args": [
+        { "name": "segmentPrompt", "type": "string", "required": true, "description": "Segmentation prompt or CSS selector" },
+        { "name": "extractionPrompt", "type": "string", "required": true, "description": "Extraction prompt" },
+        { "name": "prefix", "type": "string", "required": false, "description": "Output column prefix" }
+      ],
+      "example": "- stage: intelligent_flatSelect\n  args: [\"product cards\", \"extract name and price\", \"product\"]"
+    },
+    {
+      "name": "intelligentExtract",
+      "extensionType": "transformation",
+      "category": "intelligent",
+      "description": "LLM-powered ad-hoc extraction from an HTML field (row transform)",
+      "args": [
+        { "name": "inputField", "type": "string", "required": true, "description": "Input field containing HTML/text" },
+        { "name": "query", "type": "string", "required": true, "description": "Extraction query/prompt" },
+        { "name": "outputField", "type": "string", "required": true, "description": "Output field name" }
+      ],
+      "example": "- stage: intelligentExtract\n  args: [\"description_html\", \"Extract brand and model\", \"llm_json\"]"
+    },
+    {
+      "name": "intelligent_table",
+      "extensionType": "transformation",
+      "category": "intelligent",
+      "description": "Placeholder stage for LLM table extraction (currently no-op)",
+      "args": [],
+      "example": "- stage: intelligent_table\n  args: []"
+    },
+    {
+      "name": "echo",
+      "extensionType": "transformation",
+      "category": "utility",
+      "description": "Debug helper; writes _echo column",
+      "args": [
+        { "name": "message", "type": "string", "required": false, "description": "Message to write to _echo column" }
+      ],
+      "example": "- stage: echo\n  args: [\"hello\"]"
+    },
+    {
+      "name": "cache",
+      "extensionType": "transformation",
+      "category": "utility",
+      "description": "Persist the current dataset in Spark memory (equivalent to .cache())",
+      "args": [],
+      "example": "- stage: cache\n  args: []"
+    },
+    {
+      "name": "store",
+      "extensionType": "transformation",
+      "category": "utility",
+      "description": "Save the current dataset under a label for multi-source composition",
+      "args": [
+        { "name": "label", "type": "string", "required": true, "description": "Label to store the dataset under" }
+      ],
+      "example": "- stage: store\n  args: [\"source_a\"]"
+    },
+    {
+      "name": "reset",
+      "extensionType": "transformation",
+      "category": "utility",
+      "description": "Start fresh with an empty dataset (for multi-source composition)",
+      "args": [],
+      "example": "- stage: reset\n  args: []"
+    },
+    {
+      "name": "union_with",
+      "aliases": ["unionWith"],
+      "extensionType": "transformation",
+      "category": "utility",
+      "description": "Union the current dataset with one or more stored labels",
+      "args": [
+        { "name": "labels", "type": "varargs<string>", "required": true, "description": "One or more stored dataset labels to union" }
+      ],
+      "example": "- stage: union_with\n  args: [\"source_a\", \"source_b\"]"
+    },
+    {
+      "name": "dedup",
+      "extensionType": "transformation",
+      "category": "utility",
+      "description": "Deduplicate rows. With no args: full-row distinct. With args: deduplicate by key columns",
+      "args": [
+        { "name": "keys", "type": "varargs<string>", "required": false, "description": "Key column names (empty = full-row distinct)" }
+      ],
+      "example": "- stage: dedup\n  args: [\"sku\", \"source\"]"
+    },
+    {
+      "name": "filter_country",
+      "extensionType": "transformation",
+      "category": "utility",
+      "description": "Keep only rows whose country field is in the allowed list",
+      "args": [
+        { "name": "countryCodes", "type": "varargs<string>", "required": true, "description": "Allowed ISO country codes" }
+      ],
+      "example": "- stage: filter_country\n  args: [\"IT\", \"FR\"]"
+    },
+    {
+      "name": "sentiment",
+      "extensionType": "transformation",
+      "category": "analytics",
+      "description": "Simple lexicon-based sentiment analysis; adds sentiment and count columns",
+      "args": [
+        { "name": "textField", "type": "string", "required": false, "description": "Text field name (default: message)" }
+      ],
+      "example": "- stage: sentiment\n  args: [\"message\"]"
+    },
+    {
+      "name": "aggregatesentiment",
+      "extensionType": "transformation",
+      "category": "analytics",
+      "description": "Reduce-by-key aggregation; sums sentiment and count by key",
+      "args": [
+        { "name": "groupField", "type": "string", "required": false, "description": "Group field name (default: entity)" }
+      ],
+      "example": "- stage: aggregatesentiment\n  args: [\"country\"]"
+    },
+    {
+      "name": "avg_sentiment_by_key",
+      "extensionType": "transformation",
+      "category": "analytics",
+      "description": "Group-by-key and compute average sentiment into avg_sentiment",
+      "args": [
+        { "name": "groupField", "type": "string", "required": false, "description": "Group field name (default: entity)" }
+      ],
+      "example": "- stage: avg_sentiment_by_key\n  args: [\"country\"]"
+    },
+    {
+      "name": "sentiment_monthly",
+      "extensionType": "transformation",
+      "category": "analytics",
+      "description": "Macro-stage: runs sentiment, derives month from date, then aggregates by month",
+      "args": [
+        { "name": "textField", "type": "string", "required": false, "description": "Text field name (default: message)" }
+      ],
+      "example": "- stage: sentiment_monthly\n  args: [\"message\"]"
+    },
+    {
+      "name": "sum_sales",
+      "extensionType": "transformation",
+      "category": "analytics",
+      "description": "Reduce-by-key aggregation; sums numeric sales by country",
+      "args": [],
+      "example": "- stage: sum_sales\n  args: []"
+    },
+    {
+      "name": "load_csv",
+      "extensionType": "source",
+      "category": "io",
+      "description": "Load a CSV file into the pipeline (creates new dataset)",
+      "args": [
+        { "name": "pathOrOptions", "type": "string|map", "required": true, "description": "Path string or {path, header, inferSchema, ...} map" }
+      ],
+      "example": "- stage: load_csv\n  args:\n    - { path: \"s3a://bucket/input.csv\", header: \"true\", inferSchema: \"true\" }"
+    },
+    {
+      "name": "save_csv",
+      "extensionType": "sink",
+      "category": "io",
+      "description": "Save current dataset as CSV and continue pipeline",
+      "args": [
+        { "name": "outputPath", "type": "string", "required": true, "description": "Output path" },
+        { "name": "mode", "type": "string", "required": false, "description": "overwrite|append|errorifexists|ignore (default: overwrite)" }
+      ],
+      "example": "- stage: save_csv\n  args: [\"s3a://bucket/out/\", \"overwrite\"]"
+    },
+    {
+      "name": "load_union",
+      "extensionType": "source",
+      "category": "io",
+      "description": "Load multiple datasets and union them by column name (allowMissingColumns=true)",
+      "args": [
+        { "name": "sources", "type": "varargs<map>", "required": true, "description": "Source spec maps: {format, path, options}" }
+      ],
+      "example": "- stage: load_union\n  args:\n    - { format: \"csv\", path: \"s3a://bucket/a.csv\", options: { header: \"true\" } }\n    - { format: \"csv\", path: \"s3a://bucket/b.csv\", options: { header: \"true\" } }"
+    },
+    {
+      "name": "unionByName",
+      "aliases": ["union_by_name"],
+      "extensionType": "transformation",
+      "category": "io",
+      "description": "Union the current dataset with external datasets loaded from specs",
+      "args": [
+        { "name": "sources", "type": "varargs<map>", "required": true, "description": "Source spec maps: {format, path}" }
+      ],
+      "example": "- stage: unionByName\n  args:\n    - { format: \"delta\", path: \"s3a://bucket/upstream_delta/\" }"
+    },
+    {
+      "name": "load_avro",
+      "extensionType": "source",
+      "category": "io",
+      "description": "Load an Avro file into the pipeline",
+      "args": [{ "name": "path", "type": "string|map", "required": true, "description": "Path or options map" }],
+      "example": "- stage: load_avro\n  args: [\"s3a://bucket/data.avro\"]"
+    },
+    {
+      "name": "load_delta",
+      "extensionType": "source",
+      "category": "io",
+      "description": "Load a Delta Lake table into the pipeline",
+      "args": [{ "name": "path", "type": "string|map", "required": true, "description": "Path or options map" }],
+      "example": "- stage: load_delta\n  args: [\"s3a://bucket/delta/\"]"
+    },
+    {
+      "name": "load_iceberg",
+      "extensionType": "source",
+      "category": "io",
+      "description": "Load an Apache Iceberg table into the pipeline",
+      "args": [{ "name": "path", "type": "string|map", "required": true, "description": "Path or options map" }],
+      "example": "- stage: load_iceberg\n  args: [\"catalog.db.table\"]"
+    },
+    {
+      "name": "load_bigquery",
+      "extensionType": "source",
+      "category": "io",
+      "description": "Load a BigQuery table into the pipeline",
+      "args": [{ "name": "tableOrOptions", "type": "string|map", "required": true, "description": "Table name or {table, ...} options map" }],
+      "example": "- stage: load_bigquery\n  args: [\"project.dataset.table\"]"
+    },
+    {
+      "name": "load_mongodb",
+      "extensionType": "source",
+      "category": "io",
+      "description": "Load a MongoDB collection into the pipeline",
+      "args": [{ "name": "options", "type": "map", "required": true, "description": "{uri, database, collection} options map" }],
+      "example": "- stage: load_mongodb\n  args:\n    - { uri: \"mongodb://host:27017\", database: \"mydb\", collection: \"products\" }"
+    },
+    {
+      "name": "load_kafka",
+      "extensionType": "source",
+      "category": "io",
+      "description": "Load from a Kafka topic into the pipeline",
+      "args": [{ "name": "options", "type": "map", "required": true, "description": "{kafka.bootstrap.servers, subscribe, ...} options map" }],
+      "example": "- stage: load_kafka\n  args:\n    - { \"kafka.bootstrap.servers\": \"broker:9092\", subscribe: \"my-topic\" }"
+    },
+    {
+      "name": "searchEngine",
+      "aliases": ["search"],
+      "extensionType": "source",
+      "category": "external-api",
+      "description": "Search by EAN using a provider (Google Custom Search / Bing) and optionally enrich results",
+      "args": [
+        { "name": "config", "type": "map", "required": true, "description": "{provider, ean, num_results, image_search, enrich, api_key, cx, as}" }
+      ],
+      "example": "- stage: searchEngine\n  args:\n    - provider: \"google\"\n      ean: \"$ean\"\n      num_results: 10"
+    },
+    {
+      "name": "socialAPI",
+      "aliases": ["social"],
+      "extensionType": "source",
+      "category": "external-api",
+      "description": "Fetch JSON from social/financial APIs with auth via header or query param",
+      "args": [
+        { "name": "config", "type": "map", "required": true, "description": "{provider, endpoint, params, auth_token, method, body, as}" }
+      ],
+      "example": "- stage: socialAPI\n  args:\n    - provider: \"twitter\"\n      endpoint: \"tweets/search/recent\"\n      auth_token: \"${TWITTER_BEARER_TOKEN}\"\n      as: \"tweets_json\""
+    },
+    {
+      "name": "eurostatAPI",
+      "aliases": ["eurostat", "macroEU"],
+      "extensionType": "source",
+      "category": "external-api",
+      "description": "Fetch Eurostat REST API JSON",
+      "args": [
+        { "name": "config", "type": "map", "required": true, "description": "{dataset, filters, params, as}" }
+      ],
+      "example": "- stage: eurostatAPI\n  args:\n    - { dataset: \"nama_10_gdp\", as: \"gdp_data\" }"
+    },
+    {
+      "name": "istatAPI",
+      "aliases": ["istat", "macroIT"],
+      "extensionType": "source",
+      "category": "external-api",
+      "description": "Fetch ISTAT SDMX JSON",
+      "args": [
+        { "name": "config", "type": "map", "required": true, "description": "{flow, key, provider, params, as}" }
+      ],
+      "example": "- stage: istatAPI\n  args:\n    - { flow: \"DCCN_TNA\", as: \"national_accounts\" }"
+    },
+    {
+      "name": "enrichMatchingScore",
+      "extensionType": "transformation",
+      "category": "matching",
+      "description": "Recalculate matching score based on input fields and iextract output prefix",
+      "args": [
+        { "name": "config", "type": "map", "required": false, "description": "{ean_field, description_field, brand_field, extracted_prefix, output_field}" }
+      ],
+      "example": "- stage: enrichMatchingScore\n  args:\n    - { ean_field: \"EAN number\", extracted_prefix: \"prod_\", output_field: \"matching_score\" }"
+    },
+    {
+      "name": "imageSimilarity",
+      "extensionType": "transformation",
+      "category": "matching",
+      "description": "Evaluate image similarity scores using LLM + heuristics",
+      "args": [],
+      "example": "- stage: imageSimilarity\n  args: []"
+    },
+    {
+      "name": "priceNormalize",
+      "extensionType": "transformation",
+      "category": "use-case",
+      "description": "Normalize price strings into price_numeric, price_currency, and price_<currency>",
+      "args": [
+        { "name": "targetCurrency", "type": "string", "required": false, "description": "Target currency (default: USD)" }
+      ],
+      "example": "- stage: priceNormalize\n  args: [\"EUR\"]"
+    },
+    {
+      "name": "oddsNormalize",
+      "extensionType": "transformation",
+      "category": "use-case",
+      "description": "Convert odds to odds_decimal",
+      "args": [],
+      "example": "- stage: oddsNormalize\n  args: []"
+    },
+    {
+      "name": "propertyNormalize",
+      "extensionType": "transformation",
+      "category": "use-case",
+      "description": "Compute area_sqm and price_per_sqm",
+      "args": [],
+      "example": "- stage: propertyNormalize\n  args: []"
+    },
+    {
+      "name": "realEstateArbitrage",
+      "extensionType": "transformation",
+      "category": "use-case",
+      "description": "Compute simple z-score outliers (arbitrage_z, is_arbitrage) from price_per_sqm",
+      "args": [],
+      "example": "- stage: realEstateArbitrage\n  args: []"
+    },
+    {
+      "name": "propertyCluster",
+      "extensionType": "transformation",
+      "category": "analytics",
+      "description": "Cluster real-estate listings using unsupervised learning (KMeans/DBSCAN). Produces cluster_id",
+      "args": [
+        { "name": "config", "type": "map", "required": false, "description": "{algorithm, k, features, ...}" }
+      ],
+      "example": "- stage: propertyCluster\n  args:\n    - { algorithm: \"kmeans\", k: 5, features: [\"latitude\", \"longitude\", \"price_per_sqm\"] }"
+    },
+    {
+      "name": "propertyClusterML",
+      "extensionType": "transformation",
+      "category": "analytics",
+      "description": "Cluster using KMeans or GMM (ML variant)",
+      "args": [
+        { "name": "config", "type": "map", "required": false, "description": "{algorithm, k, features, ...}" }
+      ],
+      "example": "- stage: propertyClusterML\n  args:\n    - { algorithm: \"gmm\", k: 4, features: [\"price_per_sqm\", \"area_sqm\"] }"
+    },
+    {
+      "name": "python_row_transform",
+      "extensionType": "transformation",
+      "category": "python",
+      "description": "Apply a registered Python row transform function. Use python_row_transform:<function_name> syntax",
+      "supportsSubtype": true,
+      "args": [],
+      "example": "- stage: python_row_transform:price_normalizer"
+    },
+    {
+      "name": "technicalIndicators",
+      "extensionType": "transformation",
+      "category": "analytics",
+      "description": "Compute technical indicators for financial time series",
+      "args": [
+        { "name": "config", "type": "map", "required": false, "description": "Configuration map" }
+      ],
+      "example": "- stage: technicalIndicators\n  args: []"
+    },
+    {
+      "name": "fundamentalAnalysis",
+      "extensionType": "transformation",
+      "category": "analytics",
+      "description": "Compute fundamental analysis metrics",
+      "args": [],
+      "example": "- stage: fundamentalAnalysis\n  args: []"
+    },
+    {
+      "name": "portfolioDataPrep",
+      "extensionType": "transformation",
+      "category": "analytics",
+      "description": "Prepare data for portfolio analysis",
+      "args": [],
+      "example": "- stage: portfolioDataPrep\n  args: []"
+    },
+    {
+      "name": "surebetFinder",
+      "extensionType": "transformation",
+      "category": "analytics",
+      "description": "Find arbitrage opportunities in betting odds data",
+      "args": [],
+      "example": "- stage: surebetFinder\n  args: []"
+    }
+  ]
+}
