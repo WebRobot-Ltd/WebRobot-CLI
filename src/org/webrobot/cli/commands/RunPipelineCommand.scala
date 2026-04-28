@@ -11,7 +11,7 @@ import scala.collection.JavaConverters._
 
 // ─── stages list ──────────────────────────────────────────────────────────────
 
-@Command(name = "list", sortOptions = false, description = Array("Elenca gli stage disponibili nel catalogo."))
+@Command(name = "list", sortOptions = false, description = Array("Elenca gli stage disponibili nel catalogo (remoto se auth configurata, locale come fallback)."))
 class PipelineStagesListCommand extends BaseSubCommand {
 
   @Opt(names = Array("--category"), description = Array("Filtra per categoria (crawling|extraction|intelligent|utility|io|analytics|external-api|python|matching|use-case)"))
@@ -24,6 +24,15 @@ class PipelineStagesListCommand extends BaseSubCommand {
   private var search: String = ""
 
   override def startRun(): Unit = {
+    // Try to refresh remote catalog (fail silently)
+    try {
+      this.init()
+      val refreshed = StageCatalog.fetchRemote(apiClient())
+      if (!refreshed && !StageCatalog.isUsingRemote) {
+        System.out.println(s"${ANSI_YELLOW}(catalogo locale — connetti e configura auth per il catalogo dinamico)${ANSI_RESET}")
+      }
+    } catch { case _: Exception => }
+
     val results = StageCatalog.list(
       if (category.nonEmpty) Some(category) else None,
       if (extensionType.nonEmpty) Some(extensionType) else None,
@@ -40,8 +49,9 @@ class PipelineStagesListCommand extends BaseSubCommand {
       )
     }
     if (dg.size > 0) {
+      val source = if (StageCatalog.isUsingRemote) s"${ANSI_GREEN}remoto${ANSI_RESET}" else s"${ANSI_YELLOW}locale${ANSI_RESET}"
       dg.render
-      System.out.println(s"${dg.size} stage disponibili. Usa 'webrobot pipeline stages describe <name>' per i dettagli.\n")
+      System.out.println(s"${dg.size} stage (catalogo $source). Usa 'webrobot pipeline stages describe <name>' per i dettagli.\n")
     } else {
       System.out.println("Nessuno stage trovato con i filtri specificati.")
     }
@@ -181,6 +191,37 @@ class PipelineStagesActionsDescribeCommand extends BaseSubCommand {
   }
 }
 
+// ─── stages refresh ───────────────────────────────────────────────────────────
+
+@Command(name = "refresh", sortOptions = false, description = Array(
+  "Aggiorna il catalogo stage dal server (GET /webrobot/api/catalog/stages) e invalida la cache locale.",
+  "Il catalogo remoto include gli stage di tutti i plugin installati e abilitati."
+))
+class PipelineStagesRefreshCommand extends BaseSubCommand {
+
+  @Opt(names = Array("--invalidate-only"), description = Array("Invalida solo la cache senza scaricare il nuovo catalogo"))
+  private var invalidateOnly: Boolean = false
+
+  override def startRun(): Unit = {
+    this.init()
+    StageCatalog.invalidateCache()
+    if (invalidateOnly) {
+      System.out.println(s"${ANSI_GREEN}Cache invalidata.${ANSI_RESET}")
+      return
+    }
+    System.out.print(s"${ANSI_CYAN}Aggiornamento catalogo stage...${ANSI_RESET} ")
+    System.out.flush()
+    val ok = StageCatalog.fetchRemote(apiClient())
+    if (ok) {
+      val count = StageCatalog.list().size
+      System.out.println(s"${ANSI_GREEN}OK${ANSI_RESET} — $count stage nel catalogo.")
+    } else {
+      System.out.println(s"${ANSI_YELLOW}Fetch remoto non riuscito — uso il catalogo locale.${ANSI_RESET}")
+      System.out.println("Verifica che auth e api_endpoint siano configurati in ~/.webrobot/config.conf")
+    }
+  }
+}
+
 // ─── stages actions (group) ───────────────────────────────────────────────────
 
 @Command(
@@ -207,11 +248,12 @@ class PipelineStagesActionsCommand extends Runnable {
   subcommands = Array(
     classOf[PipelineStagesListCommand],
     classOf[PipelineStagesDescribeCommand],
+    classOf[PipelineStagesRefreshCommand],
     classOf[PipelineStagesActionsCommand]
   )
 )
 class PipelineStagesCommand extends Runnable {
-  def run(): Unit = System.err.println("Uso: webrobot pipeline stages <list|describe|actions>")
+  def run(): Unit = System.err.println("Uso: webrobot pipeline stages <list|describe|refresh|actions>")
 }
 
 // ─── pipeline set ─────────────────────────────────────────────────────────────
