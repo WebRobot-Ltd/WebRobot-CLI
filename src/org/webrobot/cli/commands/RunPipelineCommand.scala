@@ -107,10 +107,10 @@ class PipelineStagesDescribeCommand extends BaseSubCommand {
         if (hasActionPrompt) {
           System.out.println(s"\n${ANSI_BOLD}Actions supportate:${ANSI_RESET} il parametro 'actionPrompt' accetta una descrizione in linguaggio naturale")
           System.out.println("  delle interazioni browser da eseguire prima della raccolta dati. Esempi:")
-          System.out.println(s"  ${ANSI_CYAN}\"click cookie accept button\"${ANSI_RESET}   → click su banner cookie")
-          System.out.println(s"  ${ANSI_CYAN}\"scroll down to load more\"${ANSI_RESET}     → scroll infinito")
-          System.out.println(s"  ${ANSI_CYAN}\"type 'keyword' in search then submit\"${ANSI_RESET}  → ricerca")
-          System.out.println(s"  ${ANSI_CYAN}\"none\"${ANSI_RESET}                          → nessuna action")
+          System.out.println(s"""  ${ANSI_CYAN}"click cookie accept button"${ANSI_RESET}   -> click su banner cookie""")
+          System.out.println(s"""  ${ANSI_CYAN}"scroll down to load more"${ANSI_RESET}     -> scroll infinito""")
+          System.out.println(s"""  ${ANSI_CYAN}"type 'keyword' in search then submit"${ANSI_RESET}  -> ricerca""")
+          System.out.println(s"""  ${ANSI_CYAN}"none"${ANSI_RESET}                          -> nessuna action""")
           System.out.println(s"\n  Per la lista completa: ${ANSI_BOLD}webrobot pipeline stages actions list${ANSI_RESET}")
         }
 
@@ -147,7 +147,7 @@ class PipelineStagesActionsListCommand extends BaseSubCommand {
     dg.render
     System.out.println(s"\n${actions.size} actions disponibili. Usa 'webrobot pipeline stages actions describe <name>' per dettagli.\n")
     System.out.println(s"${ANSI_BOLD}Nota:${ANSI_RESET} le actions vengono descritte in linguaggio naturale nel parametro actionPrompt.")
-    System.out.println(s"Esempio per intelligent_join: args: [\"auto\", \"click cookie button then scroll down\", 20]\n")
+    System.out.println(s"""Esempio per intelligent_join: args: ["auto", "click cookie button then scroll down", 20]\n""")
   }
 }
 
@@ -183,7 +183,7 @@ class PipelineStagesActionsDescribeCommand extends BaseSubCommand {
         a.get("examples").foreach {
           case l: java.util.List[_] if !l.isEmpty =>
             System.out.println(s"\n${ANSI_BOLD}Esempi di actionPrompt:${ANSI_RESET}")
-            l.asInstanceOf[java.util.List[_]].forEach(ex => System.out.println(s"  ${ANSI_CYAN}\"$ex\"${ANSI_RESET}"))
+            l.asInstanceOf[java.util.List[_]].asScala.foreach(ex => System.out.println(s"""  ${ANSI_CYAN}"$ex"${ANSI_RESET}"""))
           case _ =>
         }
     }
@@ -487,7 +487,7 @@ class PipelineShowCommand extends BaseSubCommand {
             stages.get(i) match {
               case m: java.util.Map[_, _] =>
                 val sm = m.asInstanceOf[java.util.Map[String, Any]]
-                val name = Option(sm.get("name")).map(n => s" ${ANSI_CYAN}\"$n\"${ANSI_RESET}").getOrElse("")
+                val name = Option(sm.get("name")).map(n => s""" ${ANSI_CYAN}"$n"${ANSI_RESET}""").getOrElse("")
                 val args = Option(sm.get("args")).map(a => s" ${ANSI_YELLOW}args=$a${ANSI_RESET}").getOrElse("")
                 val stage = Option(sm.get("stage")).map(_.toString).getOrElse("?")
                 val inCatalog = StageCatalog.exists(StageCatalog.resolveBase(stage))
