@@ -176,6 +176,12 @@ spec:
                                 .replace('\'', '&apos;')
                         }
                         withCredentials([usernamePassword(credentialsId: params.SONATYPE_CREDENTIALS_ID, usernameVariable: 'OSSRH_USER', passwordVariable: 'OSSRH_PASS')]) {
+                            def u = (env.OSSRH_USER ?: '').trim()
+                            def p = (env.OSSRH_PASS ?: '').trim()
+                            if (!u || !p) {
+                                error("Credenziale '${params.SONATYPE_CREDENTIALS_ID}': username o password vuoti dopo trim. Tipo Jenkins: «Username with password» (non Secret text).")
+                            }
+                            echo "Sonatype: lunghezze token (diagnostica) user=${u.length()} pass=${p.length()} — se deploy 401 qui è ok ma Sonatype rifiuta: rigenera Portal user token (https://central.sonatype.com/usertoken), non token OSSRH legacy."
                             writeFile file: 'jenkins-ossrh-overlay-settings.xml', text: """<?xml version="1.0" encoding="UTF-8"?>
 <settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -183,8 +189,8 @@ spec:
   <servers>
     <server>
       <id>ossrh</id>
-      <username>${esc(env.OSSRH_USER)}</username>
-      <password>${esc(env.OSSRH_PASS)}</password>
+      <username>${esc(u)}</username>
+      <password>${esc(p)}</password>
     </server>
   </servers>
 </settings>
