@@ -110,11 +110,25 @@ object YamlManifest {
     args match {
       case Some(a) if a.nonEmpty =>
         val al = new java.util.ArrayList[Any]()
-        a.foreach(al.add)
+        a.foreach { s =>
+          val typed: Any =
+            if (s == "true") java.lang.Boolean.TRUE
+            else if (s == "false") java.lang.Boolean.FALSE
+            else try { java.lang.Integer.parseInt(s) }
+            catch { case _: NumberFormatException =>
+              try { java.lang.Double.parseDouble(s) }
+              catch { case _: NumberFormatException => s }
+            }
+          al.add(typed)
+        }
         entry.put("args", al)
       case _ =>
     }
-    params.foreach { case (k, v) => entry.put(k, v) }
+    if (params.nonEmpty) {
+      val config = new java.util.LinkedHashMap[String, Any]()
+      params.foreach { case (k, v) => config.put(k, v) }
+      entry.put("config", config)
+    }
 
     val idx = position match {
       case AtEnd       => stages.size()

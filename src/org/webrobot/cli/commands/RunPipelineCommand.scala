@@ -303,7 +303,7 @@ class PipelineAddStageCommand extends BaseSubCommand {
   @Opt(names = Array("--args"), description = Array("Argomenti posizionali separati da virgola"))
   private var argsStr: String = ""
 
-  @Opt(names = Array("--param"), description = Array("Parametro chiave=valore (ripetibile)"), arity = "0..*")
+  @Opt(names = Array("--param"), description = Array("Parametro chiave=valore → inserito in config: (ripetibile)"), arity = "0..*")
   private var params: Array[String] = Array.empty
 
   @Opt(names = Array("--name"), description = Array("Nome descrittivo dello stage"))
