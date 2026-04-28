@@ -36,7 +36,7 @@ class RunListDatasetCommand extends BaseSubCommand {
     val qp = OpenApiHttp.pairs(apiClient(), tuples: _*)
     val node = OpenApiHttp.getJson(apiClient(), "/webrobot/api/datasets", qp)
     if (node != null && node.isArray)
-      JsonCliUtil.renderArrayGrid(node, "id", "name", "description", "datasetType", "enabled", "createdAt")
+      JsonCliUtil.renderArrayGrid(node, "id", "name", "datasetType", "storageType", "format", "enabled", "createdAt")
     else JsonCliUtil.printJson(node)
   }
 }
@@ -87,17 +87,39 @@ class RunGetDatasetCommand extends BaseSubCommand {
 )
 class RunAddDatasetCommand extends BaseSubCommand {
 
-  @Option(names = Array("-n", "--name"), description = Array("nome"), required = true)
+  @Option(names = Array("-n", "--name"), description = Array("nome dataset"), required = true)
   private var name: String = ""
 
   @Option(names = Array("-d", "--description"), description = Array("descrizione"))
   private var description: String = ""
 
+  @Option(names = Array("-p", "--storage-path"), description = Array("path storage (es. s3a://bucket/path)"))
+  private var storagePath: String = ""
+
+  @Option(names = Array("-f", "--format"), description = Array("formato: CSV, JSON, PARQUET, XML, TXT"))
+  private var format: String = ""
+
+  @Option(names = Array("-t", "--dataset-type"), description = Array("tipo: INPUT, OUTPUT"))
+  private var datasetType: String = ""
+
+  @Option(names = Array("-s", "--storage-type"), description = Array("storage backend: INTERNAL_MINIO (default), S3, HETZNER_S3, AZURE_BLOB, GCP_GCS"))
+  private var storageType: String = ""
+
+  @Option(names = Array("-c", "--cloud-credential-id"), description = Array("id cloud credential (richiesto se storage-type != INTERNAL_MINIO)"))
+  private var cloudCredentialId: String = ""
+
   override def startRun(): Unit = {
     this.init()
     val dto = new DatasetDto()
     dto.setName(name)
-    if (description != null) dto.setDescription(description)
+    if (description != null && description.nonEmpty) dto.setDescription(description)
+    if (storagePath != null && storagePath.nonEmpty)  dto.setStoragePath(storagePath)
+    if (format != null && format.nonEmpty)            dto.setFormat(format.toUpperCase)
+    if (datasetType != null && datasetType.nonEmpty)  dto.setDatasetType(datasetType.toUpperCase)
+    if (storageType != null && storageType.nonEmpty)  dto.setStorageType(storageType.toUpperCase)
+    if (cloudCredentialId != null && cloudCredentialId.nonEmpty) {
+      try { dto.setCloudCredentialId(cloudCredentialId.toInt) } catch { case _: NumberFormatException => }
+    }
     val node = OpenApiHttp.postJson(apiClient(), "/webrobot/api/datasets", dto)
     JsonCliUtil.printJson(node)
   }
