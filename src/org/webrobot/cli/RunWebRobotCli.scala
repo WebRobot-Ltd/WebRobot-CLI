@@ -15,19 +15,14 @@ object RunWebRobotCli extends App {
   var config: Config = _
 
   private def loadCredentialsConfig(): Config = {
-    val local = new File("config.cfg")
+    val home   = new File(System.getProperty("user.home"), ".webrobot/config.cfg")
+    val local  = new File("config.cfg")
     val root =
-      if (local.exists()) ConfigFactory.parseFile(local)
+      if (home.exists())  ConfigFactory.parseFile(home)
+      else if (local.exists()) ConfigFactory.parseFile(local)
       else if (getClass.getResource("/config.cfg") != null) ConfigFactory.parseResources("config.cfg")
-      else {
-        ConfigFactory.parseString(
-          """webrobot.api.gateway {
-            credentials {
-              apikey = ""
-              api_endpoint = "https://api.webrobot.eu"
-            }
-          }""")
-      }
+      else ConfigFactory.parseString(
+        """webrobot.api.gateway { credentials { apikey = "" api_endpoint = "https://api.webrobot.eu" } }""")
     ConfigFactory.load(root).getConfig("webrobot.api.gateway").getConfig("credentials")
   }
 
