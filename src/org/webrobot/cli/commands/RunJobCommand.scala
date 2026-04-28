@@ -205,6 +205,9 @@ class RunExecuteJobCommand extends BaseSubCommand {
   @Option(names = Array("-b", "--bodyJson"), description = Array("JSON body (default {})"))
   private var bodyJson: String = ""
 
+  @Option(names = Array("-F", "--follow"), description = Array("Dopo l'avvio, polling dello stato ogni 5s fino al completamento"))
+  private var follow: Boolean = false
+
   override def startRun(): Unit = {
     this.init()
     val path =
@@ -216,7 +219,18 @@ class RunExecuteJobCommand extends BaseSubCommand {
         apiClient().getObjectMapper.readTree(bodyJson)
       else JsonNodeFactory.instance.objectNode()
     val node = OpenApiHttp.postJson(apiClient(), path, body)
-    JsonCliUtil.printJson(node)
+    if (follow && node != null) {
+      val execId = extractJsonField(node, "executionId", "id", "execution_id", "executionReferenceId")
+      if (execId != null && execId.nonEmpty) {
+        System.out.println(s"${ANSI_CYAN}Esecuzione avviata — seguendo lo stato...${ANSI_RESET}")
+        followExecution(projectId, jobId, execId)
+      } else {
+        JsonCliUtil.printJson(node)
+        System.err.println(s"${ANSI_YELLOW}--follow: executionId non trovato nella risposta${ANSI_RESET}")
+      }
+    } else {
+      JsonCliUtil.printJson(node)
+    }
   }
 }
 

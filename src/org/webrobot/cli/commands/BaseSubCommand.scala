@@ -3,11 +3,13 @@ package org.webrobot.cli.commands
 import java.io.{IOException, InputStream}
 import java.net.{HttpURLConnection, URL}
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.google.gson.Gson
 import eu.webrobot.openapi.client.{ApiClient, ApiException}
 import org.apache.commons.io.IOUtils
 import org.webrobot.cli.RunWebRobotCli
 import org.webrobot.cli.commands.models.ErrorException
+import org.webrobot.cli.openapi.OpenApiHttp
 import org.webrobot.cli.utils.DataGrid
 import WebRobot.Cli.Sdk.openapi.OpenApiSdkAdapter
 
@@ -17,9 +19,89 @@ class BaseSubCommand extends Runnable {
   protected var dataGrid: DataGrid = _
   protected var errorManager: ErrorManager = new ErrorManager()
 
-  val ANSI_RESET = "\u001B[0m"
-  val ANSI_RED = "\u001B[31m"
-  val ANSI_GREEN = "\u001B[32m"
+  val ANSI_RESET  = "[0m"
+  val ANSI_RED    = "[31m"
+  val ANSI_GREEN  = "[32m"
+  val ANSI_YELLOW = "[33m"
+  val ANSI_CYAN   = "[36m"
+  val ANSI_BOLD   = "[1m"
+
+  private val TERMINAL_STATES = Set("COMPLETED", "FAILED", "ERROR", "CANCELLED", "CANCELED", "STOPPED", "ABORTED")
+
+  /** Estrae il primo valore non-null trovato tra le chiavi candidate. */
+  protected def extractJsonField(node: JsonNode, keys: String*): String = {
+    if (node == null) return null
+    for (k <- keys) {
+      val v = node.get(k)
+      if (v != null && !v.isNull && v.asText("").nonEmpty) return v.asText("")
+    }
+    null
+  }
+
+  /** Ricerca ricorsiva di una chiave in un JsonNode (oggetti e array). */
+  protected def findJsonField(node: JsonNode, key: String): String = {
+    if (node == null || node.isNull) return null
+    if (node.isObject) {
+      val direct = node.get(key)
+      if (direct != null && !direct.isNull && direct.asText("").nonEmpty) return direct.asText("")
+      val it = node.fields()
+      while (it.hasNext) {
+        val r = findJsonField(it.next().getValue, key)
+        if (r != null) return r
+      }
+    } else if (node.isArray) {
+      val it = node.elements()
+      while (it.hasNext) {
+        val r = findJsonField(it.next(), key)
+        if (r != null) return r
+      }
+    }
+    null
+  }
+
+  /**
+   * Attende il completamento di un'esecuzione polling lo stato ogni 5 s.
+   * Stampa il progresso sulla stessa riga; riga finale colorata.
+   */
+  protected def followExecution(projectId: String, jobId: String, executionId: String): Unit = {
+    val statusPath =
+      "/webrobot/api/projects/id/" + apiClient().escapeString(projectId) +
+      "/jobs/"                     + apiClient().escapeString(jobId)      +
+      "/executions/"               + apiClient().escapeString(executionId) + "/status"
+    System.out.println(s"  ${ANSI_CYAN}execution-id: $executionId${ANSI_RESET}")
+    var lastStatus = ""
+    var dots       = 0
+    var running    = true
+    while (running) {
+      Thread.sleep(5000)
+      try {
+        val node   = OpenApiHttp.getJson(apiClient(), statusPath)
+        val status = if (node != null) extractJsonField(node, "status", "executionStatus", "state") else ""
+        if (status != null && status.nonEmpty && status != lastStatus) {
+          if (lastStatus.nonEmpty) System.out.println()
+          System.out.print(s"  Stato: ${ANSI_BOLD}$status${ANSI_RESET}")
+          System.out.flush()
+          lastStatus = status
+          dots = 0
+        } else if (status != null && status.nonEmpty) {
+          dots += 1
+          System.out.print("\r  Stato: " + ANSI_BOLD + status + ANSI_RESET + ("." * math.min(dots, 30)))
+          System.out.flush()
+        }
+        if (status != null && TERMINAL_STATES.contains(status.toUpperCase)) {
+          System.out.println()
+          if ("COMPLETED".equalsIgnoreCase(status))
+            System.out.println(s"${ANSI_GREEN}✓ Completata con successo.${ANSI_RESET}")
+          else
+            System.out.println(s"${ANSI_RED}✗ Terminata: $status${ANSI_RESET}")
+          running = false
+        }
+      } catch {
+        case e: Exception =>
+          System.out.println(s"\n  ${ANSI_YELLOW}(polling interrotto: ${e.getMessage})${ANSI_RESET}")
+      }
+    }
+  }
 
   protected def uploadFile(url: URL, stream: InputStream): Unit = {
     val connection = url.openConnection.asInstanceOf[HttpURLConnection]

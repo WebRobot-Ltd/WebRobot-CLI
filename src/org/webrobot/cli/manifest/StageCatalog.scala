@@ -8,13 +8,24 @@ object StageCatalog {
 
   private val mapper = new ObjectMapper()
 
-  private lazy val catalog: List[Map[String, AnyRef]] = {
+  private lazy val root: java.util.Map[String, AnyRef] = {
     val is = getClass.getClassLoader.getResourceAsStream("stage-catalog.json")
     if (is == null) throw new RuntimeException("stage-catalog.json non trovato nel classpath")
-    val root = mapper.readValue(is, classOf[java.util.Map[String, AnyRef]])
+    mapper.readValue(is, classOf[java.util.Map[String, AnyRef]])
+  }
+
+  private lazy val catalog: List[Map[String, AnyRef]] = {
     val stages = root.get("stages").asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
     if (stages == null) List.empty
     else stages.asScala.map(_.asScala.toMap).toList
+  }
+
+  private lazy val actionsCatalog: List[Map[String, AnyRef]] = {
+    val actions = root.get("actions")
+    actions match {
+      case l: java.util.List[_] => l.asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]].asScala.map(_.asScala.toMap).toList
+      case _ => List.empty
+    }
   }
 
   def list(category: Option[String] = None, extensionType: Option[String] = None, search: Option[String] = None): List[Map[String, AnyRef]] =
@@ -39,13 +50,23 @@ object StageCatalog {
 
   def exists(name: String): Boolean = find(name).isDefined
 
-  // strip colon subtype before lookup (python_row_transform:price_normalizer -> python_row_transform)
   def resolveBase(stageName: String): String =
     if (stageName.contains(":")) stageName.split(":")(0) else stageName
-
-  private def normalize(s: String): String = s.toLowerCase.replace("_", "")
 
   def categories: List[String] = catalog.flatMap(_.get("category")).map(_.toString).distinct.sorted
 
   def extensionTypes: List[String] = catalog.flatMap(_.get("extensionType")).map(_.toString).distinct.sorted
+
+  def listActions(search: Option[String] = None): List[Map[String, AnyRef]] =
+    actionsCatalog.filter(a => search.forall { q =>
+      val lq = q.toLowerCase
+      a.values.exists(v => v != null && v.toString.toLowerCase.contains(lq))
+    })
+
+  def findAction(name: String): Option[Map[String, AnyRef]] = {
+    val norm = normalize(name)
+    actionsCatalog.find(a => normalize(a.getOrElse("name", "").toString) == norm)
+  }
+
+  private def normalize(s: String): String = s.toLowerCase.replace("_", "").replace("-", "")
 }

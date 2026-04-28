@@ -544,5 +544,139 @@
       "args": [],
       "example": "- stage: surebetFinder\n  args: []"
     }
+  ],
+  "actions": [
+    {
+      "name": "click",
+      "description": "Click on an element matching a CSS selector or natural-language description",
+      "usage": "\"click accept cookies button\"",
+      "params": [
+        { "name": "target", "type": "string", "description": "CSS selector or natural language description of the element to click" }
+      ],
+      "examples": [
+        "click accept cookies button",
+        "click the 'Load more' button",
+        "click on the first product link",
+        "click #close-modal"
+      ]
+    },
+    {
+      "name": "type",
+      "description": "Type text into an input field (clears the field first)",
+      "usage": "\"type 'search term' in the search box\"",
+      "params": [
+        { "name": "text", "type": "string", "description": "Text to type" },
+        { "name": "target", "type": "string", "description": "Target input element (selector or natural language)" }
+      ],
+      "examples": [
+        "type 'laptop' in the search input",
+        "type 'Italy' in the country field then press Enter",
+        "fill the email field with 'test@example.com'"
+      ]
+    },
+    {
+      "name": "scroll",
+      "description": "Scroll the page or an element to trigger lazy-loading or pagination",
+      "usage": "\"scroll down to load more results\"",
+      "params": [
+        { "name": "direction", "type": "string", "description": "up | down | left | right (default: down)" },
+        { "name": "amount", "type": "string", "description": "Pixels to scroll, or 'bottom' for full scroll (default: one viewport)" }
+      ],
+      "examples": [
+        "scroll down to load more products",
+        "scroll to the bottom of the page",
+        "scroll down 3 times",
+        "scroll the results container down"
+      ]
+    },
+    {
+      "name": "wait",
+      "description": "Wait for an element to appear, a condition to be met, or a fixed time",
+      "usage": "\"wait for results to load\"",
+      "params": [
+        { "name": "target", "type": "string", "description": "CSS selector, natural language condition, or milliseconds" }
+      ],
+      "examples": [
+        "wait for .product-list to appear",
+        "wait 2000ms",
+        "wait until the spinner disappears",
+        "wait for results to load"
+      ]
+    },
+    {
+      "name": "select",
+      "description": "Select an option from a <select> dropdown element",
+      "usage": "\"select 'Italy' from the country dropdown\"",
+      "params": [
+        { "name": "value", "type": "string", "description": "Option value or visible text to select" },
+        { "name": "target", "type": "string", "description": "Dropdown selector or description" }
+      ],
+      "examples": [
+        "select 'Italy' from the country dropdown",
+        "select 'EUR' in the currency selector",
+        "choose 'Highest price' from the sort by dropdown"
+      ]
+    },
+    {
+      "name": "hover",
+      "description": "Hover the mouse over an element to trigger tooltip, menu or lazy-load",
+      "usage": "\"hover over the product image\"",
+      "params": [
+        { "name": "target", "type": "string", "description": "Element to hover over" }
+      ],
+      "examples": [
+        "hover over the product image",
+        "hover on the main menu item to open submenu",
+        "move mouse over .price-tooltip"
+      ]
+    },
+    {
+      "name": "navigate",
+      "description": "Navigate the browser to a specific URL or relative path",
+      "usage": "\"navigate to the next page\"",
+      "params": [
+        { "name": "url", "type": "string", "description": "Absolute URL, relative path, or $column reference" }
+      ],
+      "examples": [
+        "navigate to the next page",
+        "go to https://example.com/products",
+        "navigate to $product_url"
+      ]
+    },
+    {
+      "name": "submit",
+      "description": "Submit a form by pressing Enter or clicking the submit button",
+      "usage": "\"submit the search form\"",
+      "params": [
+        { "name": "target", "type": "string", "description": "Form or submit button selector (optional — defaults to active form)" }
+      ],
+      "examples": [
+        "submit the search form",
+        "press Enter to search",
+        "click the submit button"
+      ]
+    },
+    {
+      "name": "eval",
+      "description": "Execute arbitrary JavaScript in the page context for advanced interactions",
+      "usage": "\"eval window.scrollTo(0, document.body.scrollHeight)\"",
+      "params": [
+        { "name": "script", "type": "string", "description": "JavaScript expression or statement to execute in the browser" }
+      ],
+      "examples": [
+        "eval window.scrollTo(0, document.body.scrollHeight)",
+        "eval document.querySelector('.cookie-banner').remove()",
+        "eval localStorage.setItem('consent', 'true')"
+      ]
+    },
+    {
+      "name": "none",
+      "description": "No action — use when the stage should navigate/collect without any prior interaction",
+      "usage": "\"none\"",
+      "params": [],
+      "examples": [
+        "none"
+      ]
+    }
   ]
 }
