@@ -107,25 +107,67 @@ class GetAgentFromIdCommand extends BaseSubCommand {
 @Command(
   name = "list",
   sortOptions = false,
-  description = Array("Elenco agent per category (GET /webrobot/api/agents/{categoryId})."),
+  description = Array(
+    "Elenco agent. Con -c: per categoryId. Con -p: risolve gli agent dai job del progetto."
+  ),
   footer = Array()
 )
 class RunListAgentCommand extends BaseSubCommand {
 
-  @Option(
-    names = Array("-c", "--categoryId", "-p", "--projectId"),
-    description = Array("category id (alias storico: -p/--projectId)"),
-    required = true
-  )
+  @Option(names = Array("-c", "--categoryId"), description = Array("category id"))
   private var categoryId: String = ""
+
+  @Option(names = Array("-p", "--projectId"), description = Array("project id — risolve gli agent dai job del progetto"))
+  private var projectId: String = ""
 
   override def startRun(): Unit = {
     this.init()
-    val path = "/webrobot/api/agents/" + apiClient().escapeString(categoryId)
-    val node = OpenApiHttp.getJson(apiClient(), path)
-    if (node != null && node.isArray)
-      JsonCliUtil.renderArrayGrid(node, "id", "name", "description", "categoryId", "createdAt")
-    else JsonCliUtil.printJson(node)
+    if (projectId.nonEmpty) {
+      listByProject()
+    } else if (categoryId.nonEmpty) {
+      val node = OpenApiHttp.getJson(apiClient(), "/webrobot/api/agents/" + apiClient().escapeString(categoryId))
+      if (node != null && node.isArray)
+        JsonCliUtil.renderArrayGrid(node, "id", "name", "description", "categoryId", "createdAt")
+      else JsonCliUtil.printJson(node)
+    } else {
+      System.err.println("Specificare -c <categoryId> oppure -p <projectId>")
+    }
+  }
+
+  private def listByProject(): Unit = {
+    import scala.collection.JavaConverters._
+
+    // 1. Fetch jobs for the project to collect unique agentIds
+    val jobsNode = OpenApiHttp.getJson(apiClient(), "/webrobot/api/projects/id/" + apiClient().escapeString(projectId) + "/jobs")
+    if (jobsNode == null || !jobsNode.isArray) {
+      System.err.println("Nessun job trovato per il progetto " + projectId)
+      return
+    }
+    def txt(node: com.fasterxml.jackson.databind.JsonNode, f: String): String = {
+      val n = node.get(f); if (n != null) n.asText("") else ""
+    }
+    val agentIds = jobsNode.elements().asScala
+      .map(j => txt(j, "agentId")).filter(_.nonEmpty).toSet
+
+    if (agentIds.isEmpty) { System.out.println("Empty set\n"); return }
+
+    // 2. Fetch all categories, scan each for the matching agents
+    val catsNode = OpenApiHttp.getJson(apiClient(), "/webrobot/api/categories")
+    val catIds = if (catsNode != null && catsNode.isArray)
+      catsNode.elements().asScala.map(c => c.get("id").asText("")).filter(_.nonEmpty).toList
+    else List.empty
+
+    val dg = new DataGrid("id", "name", "description", "categoryId", "createdAt")
+    catIds.foreach { catId =>
+      val agentsNode = OpenApiHttp.getJson(apiClient(), "/webrobot/api/agents/" + catId)
+      if (agentsNode != null && agentsNode.isArray)
+        agentsNode.elements().asScala
+          .filter(a => agentIds.contains(txt(a, "id")))
+          .foreach(a => dg.add(txt(a,"id"), txt(a,"name"), txt(a,"description"), txt(a,"categoryId"), txt(a,"createdAt")))
+    }
+
+    if (dg.size > 0) { dg.render; System.out.println(dg.size + " rows in set\n") }
+    else System.out.println("Empty set\n")
   }
 }
 

@@ -18,21 +18,40 @@ class RunListJobCommand extends BaseSubCommand {
   private var projectId: String = ""
 
   override def startRun(): Unit = {
+    import scala.collection.JavaConverters._
     this.init()
-    val path =
-      "/webrobot/api/projects/id/" + apiClient().escapeString(projectId) + "/jobs"
+    val path = "/webrobot/api/projects/id/" + apiClient().escapeString(projectId) + "/jobs"
     val node = OpenApiHttp.getJson(apiClient(), path)
-    if (node != null && node.isArray)
-      JsonCliUtil.renderArrayGrid(
-        node,
-        "id",
-        "name",
-        "agentId",
-        "inputDatasetId",
-        "executionStatus",
-        "enabled"
-      )
-    else JsonCliUtil.printJson(node)
+    if (node == null || !node.isArray) { JsonCliUtil.printJson(node); return }
+
+    // Resolve agentId → categoryId by scanning categories once
+    val agentIds = node.elements().asScala
+      .map(j => { val n = j.get("agentId"); if (n != null) n.asText("") else "" })
+      .filter(_.nonEmpty).toSet
+    val agentCatMap = scala.collection.mutable.Map[String, String]()
+    if (agentIds.nonEmpty) {
+      val catsNode = OpenApiHttp.getJson(apiClient(), "/webrobot/api/categories")
+      if (catsNode != null && catsNode.isArray) {
+        catsNode.elements().asScala.foreach { cat =>
+          val catId = cat.get("id").asText("")
+          val agentsNode = OpenApiHttp.getJson(apiClient(), "/webrobot/api/agents/" + catId)
+          if (agentsNode != null && agentsNode.isArray)
+            agentsNode.elements().asScala
+              .map(a => { val n = a.get("id"); if (n != null) n.asText("") else "" })
+              .filter(agentIds.contains)
+              .foreach(aid => agentCatMap(aid) = catId)
+        }
+      }
+    }
+
+    val dg = new DataGrid("id", "name", "agentId", "categoryId", "inputDatasetId", "executionStatus", "enabled")
+    node.elements().asScala.foreach { j =>
+      val aid = { val n = j.get("agentId"); if (n != null) n.asText("") else "" }
+      def s(f: String) = { val n = j.get(f); if (n != null) n.asText("") else "" }
+      dg.add(s("id"), s("name"), aid, agentCatMap.getOrElse(aid, ""), s("inputDatasetId"), s("executionStatus"), s("enabled"))
+    }
+    if (dg.size > 0) { dg.render; System.out.println(dg.size + " rows in set\n") }
+    else System.out.println("Empty set\n")
   }
 }
 
