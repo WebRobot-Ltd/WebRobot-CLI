@@ -227,16 +227,20 @@ class RunExecuteJobCommand extends BaseSubCommand {
   @Option(names = Array("-F", "--follow"), description = Array("Dopo l'avvio, polling dello stato ogni 5s fino al completamento"))
   private var follow: Boolean = false
 
+  @Option(names = Array("--camoufox-mode"), description = Array("Modalità Camoufox: IN_CLUSTER (cluster esistente, no VM) | EXTERNAL_VM (Ansible+Hetzner, default utenti)"))
+  private var camoufoxMode: String = ""
+
   override def startRun(): Unit = {
     this.init()
     val path =
       "/webrobot/api/projects/id/" + apiClient().escapeString(projectId) + "/jobs/" + apiClient().escapeString(
         jobId
       ) + "/execute"
-    val body =
-      if (bodyJson != null && bodyJson.trim.nonEmpty)
-        apiClient().getObjectMapper.readTree(bodyJson)
-      else JsonNodeFactory.instance.objectNode()
+    val body = if (bodyJson != null && bodyJson.trim.nonEmpty)
+      apiClient().getObjectMapper.readTree(bodyJson).asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode]
+    else JsonNodeFactory.instance.objectNode()
+    if (camoufoxMode != null && camoufoxMode.trim.nonEmpty)
+      body.put("camoufoxMode", camoufoxMode.trim.toUpperCase)
     val node = OpenApiHttp.postJson(apiClient(), path, body)
     if (follow && node != null) {
       val execId = extractJsonField(node, "executionId", "id", "execution_id", "executionReferenceId")

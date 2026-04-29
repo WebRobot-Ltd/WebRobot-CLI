@@ -648,6 +648,9 @@ class PipelineRunCommand extends BaseSubCommand {
   @Opt(names = Array("-F", "--follow"), description = Array("Polling dello stato ogni 5s fino al completamento"))
   private var follow: Boolean = false
 
+  @Opt(names = Array("--camoufox-mode"), description = Array("Modalità Camoufox: IN_CLUSTER (cluster esistente, no VM) | EXTERNAL_VM (Ansible+Hetzner, default utenti)"))
+  private var camoufoxMode: String = ""
+
   override def startRun(): Unit = {
     this.init()
     if (!file.exists()) { System.out.println(s"File non trovato: ${file.getPath}"); return }
@@ -683,7 +686,10 @@ class PipelineRunCommand extends BaseSubCommand {
     val execPath =
       "/webrobot/api/projects/id/" + apiClient().escapeString(projectId) +
       "/jobs/" + apiClient().escapeString(jobId) + "/execute"
-    val execNode = OpenApiHttp.postJson(apiClient(), execPath, new java.util.HashMap[String, String]())
+    val execBody = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode()
+    if (camoufoxMode != null && camoufoxMode.trim.nonEmpty)
+      execBody.put("camoufoxMode", camoufoxMode.trim.toUpperCase)
+    val execNode = OpenApiHttp.postJson(apiClient(), execPath, execBody)
 
     val execId = extractJsonField(execNode, "executionId", "id", "execution_id", "executionReferenceId")
     if (execId == null || execId.isEmpty) {
