@@ -254,7 +254,7 @@ trait DatasetWizard { self: BaseSubCommand =>
 
     if (cols.isEmpty) {
       // No $col variables found — auto-generate single-row trigger dataset
-      System.out.println(s"  ${ANSI_YELLOW}Nessuna variabile \$$col trovata negli stage.${ANSI_RESET}")
+      System.out.println(s"  ${ANSI_YELLOW}Nessuna variabile $$col trovata negli stage.${ANSI_RESET}")
       System.out.println(s"  Il job richiede un dataset di input anche senza variabili.")
       System.out.println(s"  Creo un dataset trigger con una sola riga (valore arbitrario).\n")
       val name = WizardIO.prompt("Nome dataset di default", suggestedName + "-default-input")
@@ -749,7 +749,7 @@ class DatasetWizardCommand extends BaseSubCommand with DatasetWizard {
     implicit val self: BaseSubCommand = this
 
     WizardIO.header("Wizard — Dataset di Input")
-    System.out.println(s"  Seleziona l'agent di riferimento per rilevare le variabili \$$col.\n")
+    System.out.println("  Seleziona l'agent di riferimento per rilevare le variabili $col.\n")
 
     val (_, _, agentCode) = selectAgentWithCode()
 
