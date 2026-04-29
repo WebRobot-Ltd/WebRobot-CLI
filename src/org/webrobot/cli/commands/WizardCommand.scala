@@ -137,12 +137,11 @@ class PipelineWizardCommand extends BaseSubCommand {
     this.init()
     implicit val self: BaseSubCommand = this
 
-    // Refresh catalogo stage (silenzioso)
     try { StageCatalog.fetchRemote(apiClient()) } catch { case _: Exception => }
 
     WizardIO.header("Wizard — Nuova Pipeline")
 
-    // 1. Fetch progetti
+    // ── 1. Progetto ────────────────────────────────────────────────────────
     System.out.println(s"  ${ANSI_CYAN}Caricamento progetti...${ANSI_RESET}")
     val projNode = OpenApiHttp.getJson(apiClient(), "/webrobot/api/projects")
     val projects = if (projNode != null && projNode.isArray) projNode.elements().asScala.toList else List.empty
@@ -151,28 +150,24 @@ class PipelineWizardCommand extends BaseSubCommand {
     projects.zipWithIndex.foreach { case (p, i) =>
       val id   = Option(p.get("id")).map(_.asText("")).getOrElse("")
       val name = Option(p.get("name")).map(_.asText("")).getOrElse(id)
-      System.out.println(s"  [${i + 1}] $name  ${ANSI_CYAN}($id)${ANSI_RESET}")
+      System.out.println(s"  [${i + 1}] ${ANSI_BOLD}$name${ANSI_RESET}  ${ANSI_CYAN}($id)${ANSI_RESET}")
     }
     System.out.println()
-
-    // 2. Selezione progetto
-    val projInput = WizardIO.prompt("Progetto (numero o id)")
+    val projInput  = WizardIO.prompt("Progetto (numero o id)")
     val projectRef = try {
       val n = projInput.toInt
       if (n >= 1 && n <= projects.size) Option(projects(n - 1).get("id")).map(_.asText("")).getOrElse("") else projInput
     } catch { case _: NumberFormatException => projInput }
     if (projectRef.isEmpty) { System.out.println(s"  ${ANSI_RED}Progetto non valido.${ANSI_RESET}"); return }
 
-    // 3. Metadati pipeline
+    // ── 2. Metadati e file ─────────────────────────────────────────────────
+    System.out.println()
     val pipelineName = WizardIO.prompt("Nome pipeline")
     if (pipelineName.isEmpty) { System.out.println(s"  ${ANSI_RED}Nome obbligatorio.${ANSI_RESET}"); return }
     val pipelineDesc = WizardIO.prompt("Descrizione (opzionale)")
+    val yamlPath     = WizardIO.prompt("File YAML di output", outputFile)
+    val file         = new File(yamlPath)
 
-    // 4. File YAML output
-    val yamlPath = WizardIO.prompt("File YAML", outputFile)
-    val file = new File(yamlPath)
-
-    // Inizializza il manifest in memoria
     val (docs, pd) = YamlManifest.ensurePipeline(file)
     val meta = pd.getOrElseUpdate("metadata", scala.collection.mutable.Map[String, Any]())
                  .asInstanceOf[scala.collection.mutable.Map[String, Any]]
@@ -182,72 +177,115 @@ class PipelineWizardCommand extends BaseSubCommand {
                  .asInstanceOf[scala.collection.mutable.Map[String, Any]]
     spec("project") = projectRef
 
-    // 5. Input dataset
+    // ── 3. Input dataset ───────────────────────────────────────────────────
     val inputDs = WizardIO.prompt("Dataset di input (id o lascia vuoto per saltare)")
     if (inputDs.nonEmpty) YamlManifest.setInput(pd, Some(inputDs), None)
 
-    // 6. Aggiunta stage in loop
-    WizardIO.header("Stage")
-    System.out.println(s"  Stages disponibili: ${ANSI_CYAN}webrobot pipeline stages list${ANSI_RESET}")
-    System.out.println(s"  Premi Invio senza nome per terminare l'aggiunta stage.\n")
+    // ── 4. Stage loop guidato ──────────────────────────────────────────────
+    WizardIO.header("Composizione pipeline — Stage")
+    System.out.println(s"  Categorie disponibili: ${ANSI_CYAN}${StageCatalog.categories.mkString(" | ")}${ANSI_RESET}")
+    System.out.println(s"  Digita il nome di uno stage, una categoria per filtrare, oppure Invio per terminare.\n")
 
     var addingStages = true
     var stageCount   = 0
+
     while (addingStages) {
-      val stageName = WizardIO.prompt(s"Stage [${stageCount + 1}] (nome, es. fetch | intelligent_join | lascia vuoto per finire)")
-      if (stageName.isEmpty) {
+      showCurrentPipeline(pd, stageCount)
+      System.out.print(s"  ${ANSI_BOLD}Stage [${stageCount + 1}]${ANSI_RESET} (nome stage / categoria / Invio per finire): ")
+      System.out.flush()
+      val input = Option(scala.io.StdIn.readLine()).map(_.trim).getOrElse("")
+
+      if (input.isEmpty) {
         addingStages = false
+      } else if (StageCatalog.categories.exists(_.equalsIgnoreCase(input))) {
+        // filtro per categoria: mostra lista e richiedi
+        val inCat = StageCatalog.list(category = Some(input))
+        System.out.println(s"\n  ${ANSI_BOLD}Stage in '$input':${ANSI_RESET}")
+        inCat.zipWithIndex.foreach { case (s, i) =>
+          val sName = s.getOrElse("name", "").toString
+          val sDesc = s.getOrElse("description", "").toString.take(55)
+          System.out.println(s"  [${i + 1}] ${ANSI_CYAN}$sName${ANSI_RESET} — $sDesc")
+        }
+        System.out.println()
+        System.out.print("  Scegli (numero o nome, Invio per annullare): ")
+        System.out.flush()
+        val pick = Option(scala.io.StdIn.readLine()).map(_.trim).getOrElse("")
+        if (pick.nonEmpty) {
+          val stageName = try {
+            val n = pick.toInt
+            if (n >= 1 && n <= inCat.size) inCat(n - 1).getOrElse("name", "").toString else pick
+          } catch { case _: NumberFormatException => pick }
+          if (stageName.nonEmpty) addStageInteractive(pd, stageName, stageCount) match {
+            case true  => stageCount += 1
+            case false => // utente ha saltato
+          }
+        }
       } else {
-        val base = StageCatalog.resolveBase(stageName)
-        if (!StageCatalog.exists(base))
-          System.out.println(s"  ${ANSI_YELLOW}Stage '$base' non nel catalogo — aggiungo comunque.${ANSI_RESET}")
-        val argsStr = WizardIO.prompt(s"  Args per '$stageName' (virgola-separati, lascia vuoto se nessuno)")
-        val argsList = if (argsStr.nonEmpty) Some(argsStr.split(",").map(_.trim).toList) else None
-        YamlManifest.addStage(pd, stageName, argsList, Map.empty, None, AtEnd)
-        stageCount += 1
-        System.out.println(s"  ${ANSI_GREEN}✓ Stage '$stageName' aggiunto.${ANSI_RESET}")
+        // nome stage diretto o ricerca
+        val base    = StageCatalog.resolveBase(input)
+        val matches = StageCatalog.list(search = Some(input))
+        val stageName = if (StageCatalog.exists(base)) {
+          base
+        } else if (matches.size == 1) {
+          val n = matches.head.getOrElse("name", "").toString
+          System.out.println(s"  ${ANSI_YELLOW}Trovato: $n${ANSI_RESET}")
+          n
+        } else if (matches.size > 1) {
+          System.out.println(s"\n  ${ANSI_BOLD}Risultati per '$input':${ANSI_RESET}")
+          matches.take(8).zipWithIndex.foreach { case (s, i) =>
+            System.out.println(s"  [${i + 1}] ${ANSI_CYAN}${s.getOrElse("name","")}${ANSI_RESET} — ${s.getOrElse("description","").toString.take(55)}")
+          }
+          System.out.print("  Scegli (numero o nome, Invio per annullare): ")
+          System.out.flush()
+          val pick = Option(scala.io.StdIn.readLine()).map(_.trim).getOrElse("")
+          if (pick.isEmpty) "" else try {
+            val n = pick.toInt
+            if (n >= 1 && n <= matches.size) matches(n - 1).getOrElse("name", "").toString else pick
+          } catch { case _: NumberFormatException => pick }
+        } else {
+          System.out.println(s"  ${ANSI_YELLOW}Stage '$input' non trovato nel catalogo — aggiungo comunque.${ANSI_RESET}")
+          input
+        }
+        if (stageName.nonEmpty) addStageInteractive(pd, stageName, stageCount) match {
+          case true  => stageCount += 1
+          case false => // utente ha saltato
+        }
       }
     }
 
-    // 7. Output
+    // ── 5. Output ──────────────────────────────────────────────────────────
     WizardIO.header("Output")
-    val outputFormat = WizardIO.prompt("Formato output (parquet/csv/json)", "parquet")
-    val outputMode   = WizardIO.prompt("Modalità scrittura (overwrite/append)", "overwrite")
-    YamlManifest.setOutput(pd,
-      if (outputFormat.nonEmpty) Some(outputFormat) else None,
-      if (outputMode.nonEmpty)   Some(outputMode)   else None,
-      None)
+    val outputFormat = WizardIO.prompt("Formato (parquet / csv / json)", "parquet")
+    val outputMode   = WizardIO.prompt("Modalità scrittura (overwrite / append)", "overwrite")
+    YamlManifest.setOutput(pd, Some(outputFormat), Some(outputMode), None)
 
-    // 8. Schedule (opzionale)
+    // ── 6. Schedule ────────────────────────────────────────────────────────
     val schedCron = WizardIO.prompt("Schedule cron (es. '0 6 * * *', lascia vuoto per nessuno)")
     if (schedCron.nonEmpty) {
       val tz = WizardIO.prompt("Timezone", "Europe/Rome")
       YamlManifest.setSchedule(pd, schedCron, tz)
     }
 
-    // 9. Salva YAML e mostra anteprima
+    // ── 7. Salva e anteprima ───────────────────────────────────────────────
     YamlManifest.save(file, docs)
-    System.out.println(s"\n  ${ANSI_GREEN}File YAML salvato: ${ANSI_BOLD}${file.getPath}${ANSI_RESET}")
+    System.out.println(s"\n${ANSI_BOLD}  Pipeline salvata: ${ANSI_CYAN}${file.getPath}${ANSI_RESET}")
+    System.out.println(s"\n${ANSI_BOLD}  Anteprima YAML:${ANSI_RESET}")
+    new String(java.nio.file.Files.readAllBytes(file.toPath), "UTF-8")
+      .linesIterator.foreach(l => System.out.println("    " + l))
+    WizardIO.showCommand(this, s"webrobot pipeline run -f ${file.getName} --follow")
 
-    WizardIO.showCommand(this,
-      s"webrobot pipeline run -f ${file.getName} --follow")
-
-    // 10. Apply
+    // ── 8. Apply ───────────────────────────────────────────────────────────
     if (!WizardIO.confirm("Applicare il manifest al server?")) {
-      System.out.println(s"\n  Per applicare in seguito:")
       System.out.println(s"  ${ANSI_CYAN}webrobot pipeline apply -f ${file.getName}${ANSI_RESET}")
       return
     }
-
     val yamlContent = new String(java.nio.file.Files.readAllBytes(file.toPath), "UTF-8")
     System.out.println(s"  ${ANSI_CYAN}Applicazione manifest...${ANSI_RESET}")
-    val body = new java.util.HashMap[String, String]()
-    body.put("yaml", yamlContent)
-    val applyNode = OpenApiHttp.postJson(apiClient(), "/webrobot/api/manifest/apply", body)
-
+    val applyBody = new java.util.HashMap[String, String]()
+    applyBody.put("yaml", yamlContent)
+    val applyNode = OpenApiHttp.postJson(apiClient(), "/webrobot/api/manifest/apply", applyBody)
     val projectId = findJsonField(applyNode, "projectId")
     val jobId     = findJsonField(applyNode, "jobId")
-
     if (projectId == null || jobId == null) {
       System.out.println(s"  ${ANSI_YELLOW}Manifest applicato ma projectId/jobId non estratti.${ANSI_RESET}")
       JsonCliUtil.printJson(applyNode)
@@ -255,19 +293,16 @@ class PipelineWizardCommand extends BaseSubCommand {
     }
     System.out.println(s"  ${ANSI_GREEN}✓ Applicato — progetto: $projectId  job: $jobId${ANSI_RESET}")
 
-    // 11. Esegui
+    // ── 9. Esegui ──────────────────────────────────────────────────────────
     if (!WizardIO.confirm("Avviare l'esecuzione ora?")) {
-      System.out.println(s"\n  Per eseguire in seguito:")
       System.out.println(s"  ${ANSI_CYAN}webrobot job execute -p $projectId -j $jobId --follow${ANSI_RESET}")
       return
     }
-
     val execPath = "/webrobot/api/projects/id/" + apiClient().escapeString(projectId) +
                   "/jobs/" + apiClient().escapeString(jobId) + "/execute"
     val execNode = OpenApiHttp.postJson(apiClient(), execPath,
                     com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode())
     val execId   = extractJsonField(execNode, "executionId", "id", "execution_id", "executionReferenceId")
-
     if (execId == null || execId.isEmpty) {
       System.out.println(s"  ${ANSI_YELLOW}Esecuzione avviata ma executionId non trovato.${ANSI_RESET}")
       JsonCliUtil.printJson(execNode)
@@ -275,10 +310,96 @@ class PipelineWizardCommand extends BaseSubCommand {
     }
     System.out.println(s"  ${ANSI_GREEN}✓ Esecuzione avviata — id: ${ANSI_BOLD}$execId${ANSI_RESET}")
     if (follow) followExecution(projectId, jobId, execId)
-    else {
-      System.out.println(s"\n  Per seguire lo stato:")
-      System.out.println(s"  ${ANSI_CYAN}webrobot job execute -p $projectId -j $jobId -F --follow${ANSI_RESET}")
+    else System.out.println(s"  ${ANSI_CYAN}webrobot job execute -p $projectId -j $jobId -F --follow${ANSI_RESET}")
+  }
+
+  // ── Aggiunge un singolo stage guidando parametro per parametro ────────────
+  private def addStageInteractive(pd: scala.collection.mutable.Map[String, Any], stageName: String, idx: Int): Boolean = {
+    implicit val self: BaseSubCommand = this
+    val base       = StageCatalog.resolveBase(stageName)
+    val stageDef   = StageCatalog.find(base)
+
+    System.out.println()
+    System.out.println(s"  ${ANSI_BOLD}Stage: ${ANSI_CYAN}$stageName${ANSI_RESET}")
+
+    stageDef.foreach { s =>
+      val desc = s.getOrElse("description", "").toString
+      if (desc.nonEmpty) System.out.println(s"  $desc")
+      s.get("example").foreach { ex =>
+        System.out.println(s"  ${ANSI_BOLD}Esempio:${ANSI_RESET}")
+        ex.toString.linesIterator.foreach(l => System.out.println(s"    $l"))
+      }
     }
+    System.out.println()
+
+    // Raccoglie args parametro per parametro
+    val argDefs: List[java.util.Map[String, Any]] = stageDef.flatMap(_.get("args")).collect {
+      case l: java.util.List[_] =>
+        l.asInstanceOf[java.util.List[java.util.Map[String, Any]]].asScala.toList
+    }.getOrElse(List.empty)
+
+    val collectedArgs = scala.collection.mutable.ListBuffer[String]()
+
+    if (argDefs.nonEmpty) {
+      System.out.println(s"  ${ANSI_BOLD}Parametri:${ANSI_RESET}")
+      argDefs.foreach { argDef =>
+        val aName = Option(argDef.get("name")).map(_.toString).getOrElse("")
+        val aType = Option(argDef.get("type")).map(_.toString).getOrElse("string")
+        val aDesc = Option(argDef.get("description")).map(_.toString).getOrElse("")
+        val aReq  = Option(argDef.get("required")).exists(v => v.toString == "true")
+        val aDefault = Option(argDef.get("default")).map(_.toString).getOrElse("")
+        val reqMark  = if (aReq) s" ${ANSI_RED}*${ANSI_RESET}" else s" ${ANSI_YELLOW}(opzionale)${ANSI_RESET}"
+        System.out.println(s"    ${ANSI_CYAN}$aName${ANSI_RESET} [$aType]$reqMark — $aDesc")
+        val value = WizardIO.prompt(s"    $aName", aDefault)
+        if (value.nonEmpty || aReq) collectedArgs += value
+        else collectedArgs += "" // placeholder per args opzionali vuoti da rimuovere dopo
+      }
+    } else {
+      // Stage senza schema args dichiarato — input libero
+      System.out.println(s"  ${ANSI_YELLOW}Nessun schema parametri disponibile per questo stage.${ANSI_RESET}")
+      val raw = WizardIO.prompt("  Args (virgola-separati, lascia vuoto se nessuno)")
+      if (raw.nonEmpty) raw.split(",").map(_.trim).foreach(collectedArgs += _)
+    }
+
+    // Rimuovi trailing empty opzionali
+    while (collectedArgs.nonEmpty && collectedArgs.last.isEmpty) collectedArgs.remove(collectedArgs.size - 1)
+
+    val argsList = if (collectedArgs.nonEmpty) Some(collectedArgs.toList) else None
+
+    // Mostra frammento YAML risultante
+    System.out.println(s"\n  ${ANSI_BOLD}Frammento YAML:${ANSI_RESET}")
+    System.out.print(s"    ${ANSI_CYAN}- stage: $stageName${ANSI_RESET}")
+    argsList.foreach { args =>
+      System.out.print(s"\n    ${ANSI_CYAN}  args: [${args.map(a => if (a.forall(c => c.isDigit || c == '.')) a else s""""$a"""").mkString(", ")}]${ANSI_RESET}")
+    }
+    System.out.println("\n")
+
+    if (!WizardIO.confirm(s"Aggiungere lo stage '$stageName'?")) {
+      System.out.println(s"  ${ANSI_YELLOW}Stage saltato.${ANSI_RESET}")
+      return false
+    }
+
+    YamlManifest.addStage(pd, stageName, argsList, Map.empty, None, AtEnd)
+    System.out.println(s"  ${ANSI_GREEN}✓ Stage '$stageName' aggiunto.${ANSI_RESET}\n")
+    true
+  }
+
+  // ── Mostra pipeline corrente in forma compatta ────────────────────────────
+  private def showCurrentPipeline(pd: scala.collection.mutable.Map[String, Any], count: Int): Unit = {
+    if (count == 0) return
+    val stages = YamlManifest.stageList(pd)
+    System.out.println(s"  ${ANSI_BOLD}Pipeline attuale ($count stage):${ANSI_RESET}")
+    (0 until stages.size()).foreach { i =>
+      stages.get(i) match {
+        case m: java.util.Map[_, _] =>
+          val sm   = m.asInstanceOf[java.util.Map[String, Any]]
+          val s    = Option(sm.get("stage")).map(_.toString).getOrElse("?")
+          val args = Option(sm.get("args")).map(a => s"  args: $a").getOrElse("")
+          System.out.println(s"  ${ANSI_CYAN}  [$i] $s${ANSI_RESET}$args")
+        case _ =>
+      }
+    }
+    System.out.println()
   }
 }
 
