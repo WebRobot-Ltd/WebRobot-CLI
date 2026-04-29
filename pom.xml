@@ -11,7 +11,7 @@
     <properties>
         <revision>0.3.0-SNAPSHOT</revision>
         <!-- Versione Maven dello SDK (Maven Central dopo pubblicazione; allinea al deploy SDK) -->
-        <webrobot.sdk.depversion>0.3.11</webrobot.sdk.depversion>
+        <webrobot.sdk.depversion>0.3.12</webrobot.sdk.depversion>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
     </properties>
