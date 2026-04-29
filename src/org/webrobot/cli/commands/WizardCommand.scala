@@ -139,6 +139,80 @@ private object StageWizardHelper {
     }
   }
 
+  /**
+   * Asks LLM to suggest a stage sequence from a natural-language description.
+   * Returns a list of confirmed (name, args) pairs ready to use.
+   */
+  def suggestStagesFromDescription(description: String)(implicit cmd: BaseSubCommand): List[(String, List[String])] = {
+    import cmd._
+    val allStages = StageCatalog.list()
+    val catalogSummary = allStages.map { s =>
+      val n = s.getOrElse("name", "").toString
+      val d = s.getOrElse("description", "").toString.take(60)
+      s"$n: $d"
+    }.mkString("\n")
+
+    val systemPrompt = "You are a WebRobot ETL pipeline assistant. Return ONLY a valid JSON array of stage names, nothing else. No markdown, no explanation."
+    val userPrompt = "Available stages:\n" + catalogSummary +
+      "\n\nUser pipeline description: " + description +
+      "\n\nReturn a JSON array of stage names (from the list above) that best implement this pipeline. Example: [\"web_scrape_url\",\"html_extract_field\",\"csv_write\"]"
+
+    System.out.println(s"  ${ANSI_CYAN}Chiamata LLM per suggerire stage...${ANSI_RESET}")
+    val raw = cmd.llmInfer(userPrompt, systemPrompt).getOrElse("")
+    if (raw.isEmpty) {
+      System.out.println(s"  ${ANSI_YELLOW}Nessun suggerimento LLM disponibile.${ANSI_RESET}")
+      return List.empty
+    }
+
+    // Parse JSON array from response (robust: find first '[' ... ']')
+    val start = raw.indexOf('[')
+    val end   = raw.lastIndexOf(']')
+    if (start < 0 || end < 0 || end <= start) {
+      System.out.println(s"  ${ANSI_YELLOW}Risposta LLM non parsificabile: $raw${ANSI_RESET}")
+      return List.empty
+    }
+    val jsonArr = raw.substring(start, end + 1)
+    val names = try {
+      import scala.collection.JavaConverters._
+      val node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(jsonArr)
+      if (!node.isArray) List.empty[String]
+      else node.elements().asScala.map(_.asText("")).filter(_.nonEmpty).toList
+    } catch { case _: Exception => List.empty[String] }
+
+    if (names.isEmpty) {
+      System.out.println(s"  ${ANSI_YELLOW}LLM non ha restituito stage validi.${ANSI_RESET}")
+      return List.empty
+    }
+
+    System.out.println(s"\n  ${ANSI_BOLD}Stage suggeriti dall'LLM:${ANSI_RESET}")
+    names.zipWithIndex.foreach { case (n, i) =>
+      val exists = StageCatalog.exists(n)
+      val mark   = if (exists) s"${ANSI_GREEN}✓${ANSI_RESET}" else s"${ANSI_YELLOW}?${ANSI_RESET}"
+      System.out.println(s"  [$mark] [${i + 1}] ${ANSI_CYAN}$n${ANSI_RESET}")
+    }
+    System.out.println()
+
+    val collected = new scala.collection.mutable.ListBuffer[(String, List[String])]()
+    names.foreach { name =>
+      System.out.print(s"  Includere stage ${ANSI_CYAN}$name${ANSI_RESET}? [Y/n]: ")
+      System.out.flush()
+      val ans = Option(scala.io.StdIn.readLine()).map(_.trim).getOrElse("")
+      if (ans.isEmpty || ans.equalsIgnoreCase("y")) {
+        val resolved = if (StageCatalog.exists(name)) name else {
+          val m = StageCatalog.list(search = Some(name))
+          if (m.size == 1) m.head.getOrElse("name", name).toString else name
+        }
+        collectStageArgs(resolved) match {
+          case Some(entry) =>
+            collected += entry
+            System.out.println(s"  ${ANSI_GREEN}✓ Stage '${entry._1}' aggiunto.${ANSI_RESET}\n")
+          case None =>
+        }
+      }
+    }
+    collected.toList
+  }
+
   def stagesToYaml(stages: List[(String, List[String])]): String = {
     val sb = new StringBuilder("stages:\n")
     stages.foreach { case (name, args) =>
@@ -342,6 +416,31 @@ trait PythonExtWizard { self: BaseSubCommand =>
     val tmpl = extensionTemplate(extType, extName)
     System.out.println(s"\n  ${ANSI_BOLD}Template ($extType):${ANSI_RESET}")
     tmpl.linesIterator.foreach(l => System.out.println("    " + l))
+
+    // LLM-assisted generation
+    if (WizardIO.confirm("Generare il codice con LLM?")) {
+      System.out.print(s"  Descrivi cosa deve fare la funzione: ")
+      System.out.flush()
+      val description = Option(scala.io.StdIn.readLine()).map(_.trim).getOrElse("")
+      if (description.nonEmpty) {
+        val systemPrompt = "You are a Python expert. Generate only the Python function body, no explanations, no markdown fences."
+        val userPrompt = "Write a Python " + extType + " extension named '" + extName + "' for a PySpark ETL pipeline.\n" +
+          "The function signature is: " + tmpl.linesIterator.next() + "\n" +
+          "Description: " + description + "\n" +
+          "Return only the complete Python function (def line + body), nothing else."
+        System.out.println(s"  ${ANSI_CYAN}Chiamata LLM in corso...${ANSI_RESET}")
+        llmInfer(userPrompt, systemPrompt) match {
+          case Some(generated) =>
+            System.out.println(s"\n  ${ANSI_BOLD}Codice generato:${ANSI_RESET}")
+            generated.linesIterator.foreach(l => System.out.println("    " + l))
+            if (WizardIO.confirm("\n  Usare questo codice?")) return generated
+            System.out.println(s"  ${ANSI_YELLOW}Codice scartato — inserimento manuale.${ANSI_RESET}")
+          case None =>
+            System.out.println(s"  ${ANSI_YELLOW}LLM non disponibile — inserimento manuale.${ANSI_RESET}")
+        }
+      }
+    }
+
     System.out.println(s"\n  Inserisci il corpo della funzione.")
     System.out.println(s"  Digita ${ANSI_BOLD}---${ANSI_RESET} su una riga vuota per terminare.\n")
     val lines = ListBuffer[String]()
@@ -521,11 +620,21 @@ class AgentWizardCommand extends BaseSubCommand with PythonExtWizard {
       case _ =>
         try { StageCatalog.fetchRemote(apiClient()) } catch { case _: Exception => }
         System.out.println(s"\n  Categorie: ${ANSI_CYAN}${StageCatalog.categories.mkString(" | ")}${ANSI_RESET}")
-        System.out.println(s"  Digita nome stage o categoria; Invio vuoto per terminare.\n")
 
         val collectedStages = ListBuffer[(String, List[String])]()
-        var adding = true
 
+        // LLM natural-language mode
+        System.out.print(s"  Descrivi l'agent in linguaggio naturale (o Invio per aggiungere stage manualmente): ")
+        System.out.flush()
+        val nlDesc = Option(scala.io.StdIn.readLine()).map(_.trim).getOrElse("")
+        if (nlDesc.nonEmpty) {
+          StageWizardHelper.suggestStagesFromDescription(nlDesc).foreach(collectedStages += _)
+          System.out.println(s"\n  Puoi continuare ad aggiungere stage manualmente.\n")
+        } else {
+          System.out.println(s"  Digita nome stage o categoria; Invio vuoto per terminare.\n")
+        }
+
+        var adding = true
         while (adding) {
           if (collectedStages.nonEmpty) {
             System.out.println(s"  ${ANSI_BOLD}Stage aggiunti:${ANSI_RESET}")
@@ -656,10 +765,26 @@ class PipelineWizardCommand extends BaseSubCommand with DatasetWizard with Pytho
     // ── 3. Stage loop guidato ──────────────────────────────────────────────
     WizardIO.header("Composizione pipeline — Stage")
     System.out.println(s"  Categorie disponibili: ${ANSI_CYAN}${StageCatalog.categories.mkString(" | ")}${ANSI_RESET}")
-    System.out.println(s"  Digita il nome di uno stage, una categoria per filtrare, oppure Invio per terminare.\n")
+
+    // LLM natural-language mode
+    System.out.print(s"  Descrivi la pipeline in linguaggio naturale (o Invio per aggiungere stage manualmente): ")
+    System.out.flush()
+    val nlDesc = Option(scala.io.StdIn.readLine()).map(_.trim).getOrElse("")
+    var stageCount = 0
+    if (nlDesc.nonEmpty) {
+      StageWizardHelper.suggestStagesFromDescription(nlDesc).foreach { entry =>
+        YamlManifest.addStage(pd, entry._1, if (entry._2.nonEmpty) Some(entry._2) else None, Map.empty, None,
+          org.webrobot.cli.manifest.AtEnd)
+        stageCount += 1
+      }
+      if (stageCount > 0)
+        System.out.println(s"\n  ${ANSI_GREEN}✓ $stageCount stage aggiunti dall'LLM.${ANSI_RESET}")
+      System.out.println(s"\n  Puoi continuare ad aggiungere stage manualmente.\n")
+    } else {
+      System.out.println(s"  Digita il nome di uno stage, una categoria per filtrare, oppure Invio per terminare.\n")
+    }
 
     var addingStages = true
-    var stageCount   = 0
 
     while (addingStages) {
       showCurrentPipeline(pd, stageCount)

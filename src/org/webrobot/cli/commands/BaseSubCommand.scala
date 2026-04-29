@@ -200,6 +200,67 @@ class BaseSubCommand extends Runnable {
     ""
   }
 
+  protected def resolveLlmProvider(): String = {
+    try {
+      if (RunWebRobotCli.config != null && RunWebRobotCli.config.hasPath("llm_provider")) {
+        val v = RunWebRobotCli.config.getString("llm_provider")
+        if (v != null && v.trim.nonEmpty) return v.trim.toLowerCase
+      }
+    } catch { case _: Throwable => () }
+    ""
+  }
+
+  def llmInfer(prompt: String, systemPrompt: String = ""): Option[String] = {
+    try {
+      val base = { val b = apiClient().getBasePath; if (b.endsWith("/")) b.dropRight(1) else b }
+      val url2 = new URL(base + "/webrobot/api/llm/infer")
+      val conn = url2.openConnection().asInstanceOf[HttpURLConnection]
+      conn.setDoOutput(true)
+      conn.setRequestMethod("POST")
+      conn.setRequestProperty("Content-Type", "application/json")
+      conn.setConnectTimeout(15000)
+      conn.setReadTimeout(60000)
+      val auth = generateAuthHeader()
+      if (auth != null && auth.nonEmpty) conn.setRequestProperty("Authorization", auth)
+      val key = generateApiKeyHeader()
+      if (key != null && key.nonEmpty) conn.setRequestProperty("X-API-Key", key)
+
+      val providerStr = resolveLlmProvider()
+      val body = new StringBuilder("{\"prompt\":").append(escapeJsonString(prompt))
+      if (systemPrompt.nonEmpty) body.append(",\"systemPrompt\":").append(escapeJsonString(systemPrompt))
+      if (providerStr.nonEmpty) body.append(",\"provider\":").append(escapeJsonString(providerStr))
+      body.append("}")
+      val bytes = body.toString.getBytes("UTF-8")
+      conn.setRequestProperty("Content-Length", bytes.length.toString)
+      conn.getOutputStream.write(bytes)
+      conn.getOutputStream.close()
+
+      val code = conn.getResponseCode
+      val stream2 = if (code >= 200 && code < 300) conn.getInputStream else conn.getErrorStream
+      val resp = org.apache.commons.io.IOUtils.toString(stream2, "UTF-8")
+      val node = apiClient().getObjectMapper.readTree(resp)
+      val result = node.path("result").asText("")
+      if (result.nonEmpty) Some(result) else None
+    } catch {
+      case e: Exception =>
+        System.out.println(s"  ${ANSI_YELLOW}LLM non disponibile: ${e.getMessage}${ANSI_RESET}")
+        None
+    }
+  }
+
+  private def escapeJsonString(s: String): String = {
+    val sb = new StringBuilder("\"")
+    s.foreach {
+      case '"'  => sb.append("\\\"")
+      case '\\' => sb.append("\\\\")
+      case '\n' => sb.append("\\n")
+      case '\r' => sb.append("\\r")
+      case '\t' => sb.append("\\t")
+      case c    => sb.append(c)
+    }
+    sb.append("\"").toString
+  }
+
   protected def resolveApiEndpoint(): String = {
     val defaultEndpoint = "https://api.webrobot.eu"
     try {
