@@ -188,6 +188,62 @@ trait DatasetWizard { self: BaseSubCommand =>
     sb.toString
   }
 
+  // Selects a category → agent → fetches agent code. Returns (categoryId, agentId, agentCode).
+  protected def selectAgentWithCode(): (String, String, String) = {
+    implicit val _cmd: BaseSubCommand = this
+    System.out.println(s"  ${ANSI_CYAN}Caricamento categorie...${ANSI_RESET}")
+    val catsNode = OpenApiHttp.getJson(apiClient(), "/webrobot/api/categories")
+    val cats     = if (catsNode != null && catsNode.isArray) catsNode.elements().asScala.toList else List.empty
+    System.out.println()
+    cats.zipWithIndex.foreach { case (c, i) =>
+      val id   = Option(c.get("id")).map(_.asText("")).getOrElse("")
+      val name = Option(c.get("name")).map(_.asText("")).getOrElse(id)
+      System.out.println(s"  [${i + 1}] $name  ${ANSI_CYAN}($id)${ANSI_RESET}")
+    }
+    System.out.println()
+    val catPick = WizardIO.prompt("Categoria agent (numero o id, Invio per inserire id diretto)")
+
+    val (agentId, catId) = if (catPick.nonEmpty) {
+      val cid = try {
+        val n = catPick.toInt
+        if (n >= 1 && n <= cats.size) Option(cats(n - 1).get("id")).map(_.asText("")).getOrElse("") else catPick
+      } catch { case _: NumberFormatException => catPick }
+      val agentsNode = OpenApiHttp.getJson(apiClient(), "/webrobot/api/agents/" + apiClient().escapeString(cid))
+      val agents     = if (agentsNode != null && agentsNode.isArray) agentsNode.elements().asScala.toList else List.empty
+      if (agents.isEmpty) {
+        System.out.println(s"  ${ANSI_YELLOW}Nessun agent in questa categoria.${ANSI_RESET}")
+        (WizardIO.prompt("Agent id (manuale)"), cid)
+      } else {
+        System.out.println()
+        agents.zipWithIndex.foreach { case (a, i) =>
+          val id   = Option(a.get("id")).map(_.asText("")).getOrElse("")
+          val name = Option(a.get("name")).map(_.asText("")).getOrElse(id)
+          System.out.println(s"  [${i + 1}] ${ANSI_BOLD}$name${ANSI_RESET}  ${ANSI_CYAN}($id)${ANSI_RESET}")
+        }
+        System.out.println()
+        val agPick = WizardIO.prompt("Agent (numero o id)")
+        val aid = try {
+          val n = agPick.toInt
+          if (n >= 1 && n <= agents.size) Option(agents(n - 1).get("id")).map(_.asText("")).getOrElse("") else agPick
+        } catch { case _: NumberFormatException => agPick }
+        (aid, cid)
+      }
+    } else {
+      val cid2 = WizardIO.prompt("Categoria id")
+      val aid  = WizardIO.prompt("Agent id")
+      (aid, cid2)
+    }
+
+    val code: String = try {
+      val path = "/webrobot/api/agents/" + apiClient().escapeString(catId) +
+                 "/" + apiClient().escapeString(agentId)
+      val node = OpenApiHttp.getJson(apiClient(), path)
+      if (node != null) Option(node.get("code")).map(_.asText("")).getOrElse("") else ""
+    } catch { case _: Exception => "" }
+
+    (catId, agentId, code)
+  }
+
   // stageText: raw string representation of all stage args (scanned for $col patterns)
   // suggestedName: used as dataset name prefix
   // Returns Some(datasetId) or None if skipped
@@ -620,62 +676,10 @@ class JobWizardCommand extends BaseSubCommand with DatasetWizard {
     } catch { case _: NumberFormatException => projInput }
     if (projectId.isEmpty) { System.out.println(s"  ${ANSI_RED}Progetto non valido.${ANSI_RESET}"); return }
 
-    // ── 2. Agent (per categoria) ───────────────────────────────────────────
+    // ── 2. Agent (per categoria) + fetch codice per $col ──────────────────
     System.out.println()
-    System.out.println(s"  ${ANSI_CYAN}Caricamento categorie...${ANSI_RESET}")
-    val catsNode = OpenApiHttp.getJson(apiClient(), "/webrobot/api/categories")
-    val cats     = if (catsNode != null && catsNode.isArray) catsNode.elements().asScala.toList else List.empty
-    System.out.println()
-    cats.zipWithIndex.foreach { case (c, i) =>
-      val id   = Option(c.get("id")).map(_.asText("")).getOrElse("")
-      val name = Option(c.get("name")).map(_.asText("")).getOrElse(id)
-      System.out.println(s"  [${i + 1}] $name  ${ANSI_CYAN}($id)${ANSI_RESET}")
-    }
-    System.out.println()
-    val catPick = WizardIO.prompt("Categoria agent (numero o id, Invio per inserire id diretto)")
-
-    val (agentId, agentCategoryId) = if (catPick.nonEmpty) {
-      val catId = try {
-        val n = catPick.toInt
-        if (n >= 1 && n <= cats.size) Option(cats(n - 1).get("id")).map(_.asText("")).getOrElse("") else catPick
-      } catch { case _: NumberFormatException => catPick }
-
-      val agentsNode = OpenApiHttp.getJson(apiClient(), "/webrobot/api/agents/" + apiClient().escapeString(catId))
-      val agents     = if (agentsNode != null && agentsNode.isArray) agentsNode.elements().asScala.toList else List.empty
-
-      if (agents.isEmpty) {
-        System.out.println(s"  ${ANSI_YELLOW}Nessun agent in questa categoria.${ANSI_RESET}")
-        (WizardIO.prompt("Agent id (manuale)"), catId)
-      } else {
-        System.out.println()
-        agents.zipWithIndex.foreach { case (a, i) =>
-          val id   = Option(a.get("id")).map(_.asText("")).getOrElse("")
-          val name = Option(a.get("name")).map(_.asText("")).getOrElse(id)
-          System.out.println(s"  [${i + 1}] ${ANSI_BOLD}$name${ANSI_RESET}  ${ANSI_CYAN}($id)${ANSI_RESET}")
-        }
-        System.out.println()
-        val agPick = WizardIO.prompt("Agent (numero o id)")
-        val aid = try {
-          val n = agPick.toInt
-          if (n >= 1 && n <= agents.size) Option(agents(n - 1).get("id")).map(_.asText("")).getOrElse("") else agPick
-        } catch { case _: NumberFormatException => agPick }
-        (aid, catId)
-      }
-    } else {
-      val catId2 = WizardIO.prompt("Categoria id")
-      val aid    = WizardIO.prompt("Agent id")
-      (aid, catId2)
-    }
-
+    val (_, agentId, agentCode) = selectAgentWithCode()
     if (agentId.isEmpty) { System.out.println(s"  ${ANSI_RED}Agent obbligatorio.${ANSI_RESET}"); return }
-
-    // ── 3. Leggi codice agent per estrarre $col ────────────────────────────
-    val agentCode: String = try {
-      val path = "/webrobot/api/agents/" + apiClient().escapeString(agentCategoryId) +
-                 "/" + apiClient().escapeString(agentId)
-      val node = OpenApiHttp.getJson(apiClient(), path)
-      if (node != null) Option(node.get("code")).map(_.asText("")).getOrElse("") else ""
-    } catch { case _: Exception => "" }
 
     // ── 4. Nome e descrizione job ──────────────────────────────────────────
     System.out.println()
@@ -731,6 +735,41 @@ class JobWizardCommand extends BaseSubCommand with DatasetWizard {
   }
 }
 
+// ─── dataset wizard ───────────────────────────────────────────────────────────
+
+@Command(
+  name = "dataset",
+  sortOptions = false,
+  description = Array("Wizard interattivo per creare e caricare un dataset di input, guidato dall'agent di riferimento.")
+)
+class DatasetWizardCommand extends BaseSubCommand with DatasetWizard {
+
+  override def startRun(): Unit = {
+    this.init()
+    implicit val self: BaseSubCommand = this
+
+    WizardIO.header("Wizard — Dataset di Input")
+    System.out.println(s"  Seleziona l'agent di riferimento per rilevare le variabili \$$col.\n")
+
+    val (_, _, agentCode) = selectAgentWithCode()
+
+    System.out.println()
+    val dsName = WizardIO.prompt("Nome dataset", "input-dataset")
+
+    val dsId = runDatasetWizard(agentCode, dsName)
+    dsId match {
+      case Some(id) =>
+        System.out.println(s"\n  ${ANSI_GREEN}Dataset pronto!${ANSI_RESET}")
+        System.out.println(s"  id: ${ANSI_BOLD}$id${ANSI_RESET}")
+        System.out.println(s"\n  Prossimi passi:")
+        System.out.println(s"  ${ANSI_CYAN}webrobot wizard job${ANSI_RESET}  — crea il job associando questo dataset")
+        System.out.println(s"  ${ANSI_CYAN}webrobot job add -p <projectId> -n <nome> -a <agentId> -i $id${ANSI_RESET}")
+      case None =>
+        System.out.println(s"  ${ANSI_YELLOW}Nessun dataset creato.${ANSI_RESET}")
+    }
+  }
+}
+
 // ─── wizard (gruppo) ──────────────────────────────────────────────────────────
 
 @Command(
@@ -744,15 +783,17 @@ class JobWizardCommand extends BaseSubCommand with DatasetWizard {
     "  webrobot wizard agent             -- crea un agent con stage composer",
     "  webrobot wizard pipeline          -- crea pipeline + dataset + esegui",
     "  webrobot wizard job               -- crea job + dataset di input + esegui",
+    "  webrobot wizard dataset           -- crea/carica dataset guidato dall'agent",
     "  webrobot wizard pipeline -f my.yaml --follow",
     ""
   ),
   subcommands = Array(
     classOf[AgentWizardCommand],
     classOf[PipelineWizardCommand],
-    classOf[JobWizardCommand]
+    classOf[JobWizardCommand],
+    classOf[DatasetWizardCommand]
   )
 )
 class RunWizardCommand extends Runnable {
-  def run(): Unit = System.err.println("Uso: webrobot wizard <agent|pipeline|job>")
+  def run(): Unit = System.err.println("Uso: webrobot wizard <agent|pipeline|job|dataset>")
 }
