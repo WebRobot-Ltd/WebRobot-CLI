@@ -318,6 +318,138 @@ trait DatasetWizard { self: BaseSubCommand =>
   }
 }
 
+// ─── python extension wizard trait ───────────────────────────────────────────
+
+trait PythonExtWizard { self: BaseSubCommand =>
+
+  protected def stagePrefix(extType: String): String = extType match {
+    case "resolver" => "python_resolver"
+    case "action"   => "python_action"
+    case _          => "python_row_transform"
+  }
+
+  private def extensionTemplate(extType: String, extName: String): String = extType match {
+    case "resolver" =>
+      s"def $extName(elem, attribute_name=None):\n    # elem is the raw attribute value\n    return elem"
+    case "action" =>
+      s"def $extName(page, params):\n    # page is the browser page object\n    return True"
+    case _ =>
+      s"def $extName(row):\n    # row is a dict; modify keys and return it\n    return row"
+  }
+
+  protected def promptExtensionFunction(extType: String, extName: String): String = {
+    implicit val _cmd: BaseSubCommand = this
+    val tmpl = extensionTemplate(extType, extName)
+    System.out.println(s"\n  ${ANSI_BOLD}Template ($extType):${ANSI_RESET}")
+    tmpl.linesIterator.foreach(l => System.out.println("    " + l))
+    System.out.println(s"\n  Inserisci il corpo della funzione.")
+    System.out.println(s"  Digita ${ANSI_BOLD}---${ANSI_RESET} su una riga vuota per terminare.\n")
+    val lines = ListBuffer[String]()
+    var reading = true
+    while (reading) {
+      val line = Option(scala.io.StdIn.readLine()).getOrElse("---")
+      if (line.trim == "---") reading = false else lines += line
+    }
+    if (lines.isEmpty) tmpl else lines.mkString("\n")
+  }
+
+  protected def promptSingleExtension(): Option[(String, String, String)] = {
+    implicit val _cmd: BaseSubCommand = this
+    System.out.println(s"\n  ${ANSI_BOLD}Tipo extension:${ANSI_RESET}")
+    System.out.println(s"  ${ANSI_CYAN}[1]${ANSI_RESET} row_transform  — trasforma ogni riga del dataset")
+    System.out.println(s"  ${ANSI_CYAN}[2]${ANSI_RESET} resolver       — risolve attributi (URL, valori)")
+    System.out.println(s"  ${ANSI_CYAN}[3]${ANSI_RESET} action         — azione su pagina/browser")
+    System.out.println(s"  ${ANSI_CYAN}[0]${ANSI_RESET} Fine\n")
+    val typeChoice = WizardIO.prompt("Tipo", "1")
+    if (typeChoice == "0") return None
+    val extType = typeChoice match {
+      case "2" => "resolver"
+      case "3" => "action"
+      case _   => "row_transform"
+    }
+    val extName = WizardIO.prompt("Nome extension (es. price_normalizer)")
+    if (extName.isEmpty) return None
+    Some((extName, extType, promptExtensionFunction(extType, extName)))
+  }
+
+  protected def validateExtension(name: String, extType: String, fnCode: String): Boolean = {
+    implicit val _cmd: BaseSubCommand = this
+    try {
+      val body = apiClient().getObjectMapper.createObjectNode()
+      body.put("name", name); body.put("extensionType", extType); body.put("function", fnCode)
+      val result = OpenApiHttp.postJson(apiClient(), "/webrobot/api/python-extensions/validate", body)
+      if (result == null) return true
+      val valid = result.path("valid").asBoolean(true)
+      if (!valid) System.out.println(s"  ${ANSI_RED}Validazione fallita: ${result.path("error").asText(result.path("message").asText(""))}${ANSI_RESET}")
+      else System.out.println(s"  ${ANSI_GREEN}✓ Validazione OK${ANSI_RESET}")
+      valid
+    } catch { case _: Exception => System.out.println(s"  ${ANSI_YELLOW}Validazione non disponibile.${ANSI_RESET}"); true }
+  }
+
+  protected def registerExtension(agentId: String, name: String, extType: String, fnCode: String): Option[String] = {
+    implicit val _cmd: BaseSubCommand = this
+    try {
+      val body = apiClient().getObjectMapper.createObjectNode()
+      body.put("name", name); body.put("agentId", agentId)
+      body.put("extensionType", extType); body.put("function", fnCode)
+      val result = OpenApiHttp.postJson(apiClient(),
+        "/webrobot/api/python-extensions/agents/" + apiClient().escapeString(agentId) + "/python-extensions", body)
+      val id = result.path("id").asText("")
+      if (id.nonEmpty) Some(id) else None
+    } catch { case e: Exception => System.out.println(s"  ${ANSI_RED}Errore: ${e.getMessage}${ANSI_RESET}"); None }
+  }
+
+  // Builds python_extensions: YAML block from collected (name, type, code)
+  protected def buildPythonExtBlock(exts: List[(String, String, String)]): String = {
+    if (exts.isEmpty) return ""
+    val sb = new StringBuilder("\npython_extensions:\n  stages:\n")
+    exts.foreach { case (name, extType, code) =>
+      sb.append(s"    $name:\n      type: $extType\n      function: |\n")
+      code.linesIterator.foreach(l => sb.append("        " + l + "\n"))
+    }
+    sb.toString
+  }
+
+  // For agent code YAML: collect extensions, insert stages + python_extensions block
+  protected def addInlineExtensionsToAgentYaml(yaml: String): String = {
+    implicit val _cmd: BaseSubCommand = this
+    if (!WizardIO.confirm("Aggiungere Python extensions inline al codice?")) return yaml
+    val exts = ListBuffer[(String, String, String)]()
+    var adding = true
+    while (adding) {
+      promptSingleExtension() match {
+        case Some(ext) =>
+          exts += ext
+          System.out.println(s"  ${ANSI_GREEN}✓ '${ext._1}' aggiunta.${ANSI_RESET}")
+          adding = WizardIO.confirm("Aggiungere un'altra extension?")
+        case None => adding = false
+      }
+    }
+    if (exts.isEmpty) return yaml
+    val stageLines = exts.map { case (n, t, _) => s"  - stage: ${stagePrefix(t)}:$n\n    args: []\n" }.mkString
+    yaml + stageLines + buildPythonExtBlock(exts.toList)
+  }
+
+  // For pipeline manifest: adds stages to pd, returns python_extensions block to append to file
+  protected def addInlineExtensionsToPipeline(pd: scala.collection.mutable.Map[String, Any]): String = {
+    implicit val _cmd: BaseSubCommand = this
+    if (!WizardIO.confirm("Aggiungere Python extensions inline alla pipeline?")) return ""
+    val exts = ListBuffer[(String, String, String)]()
+    var adding = true
+    while (adding) {
+      promptSingleExtension() match {
+        case Some(ext @ (name, extType, _)) =>
+          exts += ext
+          YamlManifest.addStage(pd, s"${stagePrefix(extType)}:$name", Some(List.empty), Map.empty, None, AtEnd)
+          System.out.println(s"  ${ANSI_GREEN}✓ Stage '${stagePrefix(extType)}:$name' aggiunto.${ANSI_RESET}")
+          adding = WizardIO.confirm("Aggiungere un'altra extension?")
+        case None => adding = false
+      }
+    }
+    buildPythonExtBlock(exts.toList)
+  }
+}
+
 // ─── agent wizard ─────────────────────────────────────────────────────────────
 
 @Command(
@@ -325,7 +457,7 @@ trait DatasetWizard { self: BaseSubCommand =>
   sortOptions = false,
   description = Array("Wizard interattivo per creare un nuovo agent.")
 )
-class AgentWizardCommand extends BaseSubCommand {
+class AgentWizardCommand extends BaseSubCommand with PythonExtWizard {
 
   override def startRun(): Unit = {
     this.init()
@@ -423,7 +555,8 @@ class AgentWizardCommand extends BaseSubCommand {
 
         if (collectedStages.isEmpty) None
         else {
-          val yaml = StageWizardHelper.stagesToYaml(collectedStages.toList)
+          var yaml = StageWizardHelper.stagesToYaml(collectedStages.toList)
+          yaml = addInlineExtensionsToAgentYaml(yaml)
           System.out.println(s"\n  ${ANSI_BOLD}Codice YAML generato:${ANSI_RESET}")
           yaml.linesIterator.foreach(l => System.out.println("    " + l))
           val saveFile = WizardIO.prompt("\n  Salva codice in file (lascia vuoto per non salvare)")
@@ -468,7 +601,7 @@ class AgentWizardCommand extends BaseSubCommand {
   sortOptions = false,
   description = Array("Wizard interattivo per creare ed eseguire una pipeline.")
 )
-class PipelineWizardCommand extends BaseSubCommand with DatasetWizard {
+class PipelineWizardCommand extends BaseSubCommand with DatasetWizard with PythonExtWizard {
 
   @Opt(names = Array("-f", "--file"), description = Array("File YAML di output (default: pipeline.yaml)"))
   private var outputFile: String = "pipeline.yaml"
@@ -542,7 +675,10 @@ class PipelineWizardCommand extends BaseSubCommand with DatasetWizard {
       }
     }
 
-    // ── 4. Dataset di input (analisi $col dagli stage) ─────────────────────
+    // ── 4. Python extensions inline ────────────────────────────────────────
+    val pyExtBlock = addInlineExtensionsToPipeline(pd)
+
+    // ── 5. Dataset di input (analisi $col dagli stage) ─────────────────────
     val stageText = {
       val sl = YamlManifest.stageList(pd)
       (0 until sl.size()).map(sl.get).mkString(" ")
@@ -550,21 +686,25 @@ class PipelineWizardCommand extends BaseSubCommand with DatasetWizard {
     val inputDatasetId = runDatasetWizard(stageText, pipelineName)
     inputDatasetId.foreach(id => YamlManifest.setInput(pd, Some(id), None))
 
-    // ── 5. Output ──────────────────────────────────────────────────────────
+    // ── 6. Output ──────────────────────────────────────────────────────────
     WizardIO.header("Output")
     val outputFormat = WizardIO.prompt("Formato (parquet / csv / json)", "parquet")
     val outputMode   = WizardIO.prompt("Modalità scrittura (overwrite / append)", "overwrite")
     YamlManifest.setOutput(pd, Some(outputFormat), Some(outputMode), None)
 
-    // ── 6. Schedule ────────────────────────────────────────────────────────
+    // ── 7. Schedule ────────────────────────────────────────────────────────
     val schedCron = WizardIO.prompt("Schedule cron (es. '0 6 * * *', lascia vuoto per nessuno)")
     if (schedCron.nonEmpty) {
       val tz = WizardIO.prompt("Timezone", "Europe/Rome")
       YamlManifest.setSchedule(pd, schedCron, tz)
     }
 
-    // ── 7. Salva e anteprima ───────────────────────────────────────────────
+    // ── 8. Salva + appendi python_extensions se presenti ──────────────────
     YamlManifest.save(file, docs)
+    if (pyExtBlock.nonEmpty) {
+      val fw = new java.io.FileWriter(file, true)
+      try { fw.write(pyExtBlock) } finally { fw.close() }
+    }
     System.out.println(s"\n${ANSI_BOLD}  Pipeline salvata: ${ANSI_CYAN}${file.getPath}${ANSI_RESET}")
     System.out.println(s"\n${ANSI_BOLD}  Anteprima YAML:${ANSI_RESET}")
     new String(java.nio.file.Files.readAllBytes(file.toPath), "UTF-8")
@@ -770,6 +910,65 @@ class DatasetWizardCommand extends BaseSubCommand with DatasetWizard {
   }
 }
 
+// ─── python extension wizard ──────────────────────────────────────────────────
+
+@Command(
+  name = "python-ext",
+  sortOptions = false,
+  description = Array("Wizard per creare e registrare una Python Extension in un agent (Mode B — da database).")
+)
+class PythonExtWizardCommand extends BaseSubCommand with DatasetWizard with PythonExtWizard {
+
+  override def startRun(): Unit = {
+    this.init()
+    implicit val self: BaseSubCommand = this
+
+    WizardIO.header("Wizard — Python Extension")
+    System.out.println("  Registra una Python Extension riutilizzabile (Mode B).")
+    System.out.println("  L'extension è associata a un agent e referenziabile per nome nel YAML pipeline.\n")
+
+    // 1. Seleziona agent
+    val (_, agentId, _) = selectAgentWithCode()
+    if (agentId.isEmpty) { System.out.println(s"  ${ANSI_RED}Agent obbligatorio.${ANSI_RESET}"); return }
+
+    // 2. Definisci extension
+    WizardIO.header("Definizione Extension")
+    val extOpt = promptSingleExtension()
+    if (extOpt.isEmpty) { System.out.println("  Annullato."); return }
+    val (extName, extType, fnCode) = extOpt.get
+    val stageName = s"${stagePrefix(extType)}:$extName"
+
+    // 3. Anteprima YAML inline
+    System.out.println(s"\n  ${ANSI_BOLD}Anteprima blocco inline (Mode A):${ANSI_RESET}")
+    buildPythonExtBlock(List((extName, extType, fnCode)))
+      .linesIterator.foreach(l => System.out.println("    " + l))
+
+    // 4. Valida
+    System.out.println(s"\n  ${ANSI_CYAN}Validazione...${ANSI_RESET}")
+    val valid = validateExtension(extName, extType, fnCode)
+    if (!valid && !WizardIO.confirm("Registrare comunque?")) { System.out.println("  Annullato."); return }
+
+    // 5. Registra
+    WizardIO.showCommand(this,
+      s"""webrobot python-ext add -a $agentId -n "$extName" --extension-type $extType""")
+    if (!WizardIO.confirm("Registrare l'extension?")) { System.out.println("  Annullato."); return }
+
+    System.out.println(s"  ${ANSI_CYAN}Registrazione...${ANSI_RESET}")
+    registerExtension(agentId, extName, extType, fnCode) match {
+      case Some(id) =>
+        System.out.println(s"\n  ${ANSI_GREEN}✓ Extension registrata — id: ${ANSI_BOLD}$id${ANSI_RESET}")
+        System.out.println(s"\n  Usa questo stage nel YAML pipeline:")
+        System.out.println(s"  ${ANSI_CYAN}  - stage: $stageName${ANSI_RESET}")
+        System.out.println(s"  ${ANSI_CYAN}    args: []${ANSI_RESET}")
+        System.out.println(s"\n  Comandi utili:")
+        System.out.println(s"  ${ANSI_CYAN}webrobot python-ext list -a $agentId${ANSI_RESET}")
+        System.out.println(s"  ${ANSI_CYAN}webrobot python-ext generate-pyspark -i $id${ANSI_RESET}")
+      case None =>
+        System.out.println(s"  ${ANSI_YELLOW}Extension non registrata.${ANSI_RESET}")
+    }
+  }
+}
+
 // ─── wizard (gruppo) ──────────────────────────────────────────────────────────
 
 @Command(
@@ -780,10 +979,11 @@ class DatasetWizardCommand extends BaseSubCommand with DatasetWizard {
   footer = Array(
     "",
     "Esempi:",
-    "  webrobot wizard agent             -- crea un agent con stage composer",
-    "  webrobot wizard pipeline          -- crea pipeline + dataset + esegui",
+    "  webrobot wizard agent             -- crea un agent con stage composer + extensions inline",
+    "  webrobot wizard pipeline          -- crea pipeline + extensions + dataset + esegui",
     "  webrobot wizard job               -- crea job + dataset di input + esegui",
     "  webrobot wizard dataset           -- crea/carica dataset guidato dall'agent",
+    "  webrobot wizard python-ext        -- registra Python Extension in un agent (Mode B)",
     "  webrobot wizard pipeline -f my.yaml --follow",
     ""
   ),
@@ -791,9 +991,10 @@ class DatasetWizardCommand extends BaseSubCommand with DatasetWizard {
     classOf[AgentWizardCommand],
     classOf[PipelineWizardCommand],
     classOf[JobWizardCommand],
-    classOf[DatasetWizardCommand]
+    classOf[DatasetWizardCommand],
+    classOf[PythonExtWizardCommand]
   )
 )
 class RunWizardCommand extends Runnable {
-  def run(): Unit = System.err.println("Uso: webrobot wizard <agent|pipeline|job|dataset>")
+  def run(): Unit = System.err.println("Uso: webrobot wizard <agent|pipeline|job|dataset|python-ext>")
 }
