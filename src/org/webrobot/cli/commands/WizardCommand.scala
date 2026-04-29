@@ -1,6 +1,6 @@
 package org.webrobot.cli.commands
 
-import eu.webrobot.openapi.client.model.AgentDto
+import eu.webrobot.openapi.client.model.{AgentDto, JobDto}
 import org.webrobot.cli.manifest.{AtEnd, StageCatalog, YamlManifest}
 import org.webrobot.cli.openapi.{JsonCliUtil, OpenApiHttp}
 import picocli.CommandLine.{Command, Option => Opt}
@@ -9,7 +9,7 @@ import java.io.File
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
+// ─── IO helpers ───────────────────────────────────────────────────────────────
 
 private object WizardIO {
   def prompt(label: String, default: String = "")(implicit cmd: BaseSubCommand): String = {
@@ -42,7 +42,6 @@ private object WizardIO {
 
 private object StageWizardHelper {
 
-  // Prompt all args for one stage; returns Some((name, args)) or None if skipped
   def collectStageArgs(stageName: String)(implicit cmd: BaseSubCommand): Option[(String, List[String])] = {
     import cmd._
     val base     = StageCatalog.resolveBase(stageName)
@@ -100,7 +99,6 @@ private object StageWizardHelper {
     } else Some((stageName, args))
   }
 
-  // Pick by number or name from a list
   def pickFromList(items: List[Map[String, AnyRef]]): String = {
     System.out.print(s"  Scegli (numero o nome, Invio per annullare): ")
     System.out.flush()
@@ -111,7 +109,6 @@ private object StageWizardHelper {
     } catch { case _: NumberFormatException => pick }
   }
 
-  // Resolve user input → stage name; handles category filter + multi-match search
   def resolveStageInput(input: String)(implicit cmd: BaseSubCommand): String = {
     import cmd._
     if (StageCatalog.categories.exists(_.equalsIgnoreCase(input))) {
@@ -142,7 +139,6 @@ private object StageWizardHelper {
     }
   }
 
-  // Serialize a stage list to minimal YAML (no project/input/output/schedule)
   def stagesToYaml(stages: List[(String, List[String])]): String = {
     val sb = new StringBuilder("stages:\n")
     stages.foreach { case (name, args) =>
@@ -156,6 +152,113 @@ private object StageWizardHelper {
       }
     }
     sb.toString
+  }
+}
+
+// ─── dataset wizard trait ─────────────────────────────────────────────────────
+
+trait DatasetWizard { self: BaseSubCommand =>
+
+  private val colPattern = java.util.regex.Pattern.compile("\\$(?!\\{)([a-zA-Z_][a-zA-Z0-9_]*)")
+
+  protected def extractColumns(text: String): List[String] = {
+    val m = colPattern.matcher(text)
+    val cols = scala.collection.mutable.LinkedHashSet[String]()
+    while (m.find()) cols += m.group(1)
+    cols.toList
+  }
+
+  protected def buildCsvInteractive(columns: List[String]): String = {
+    implicit val _cmd: BaseSubCommand = self
+    val sb = new StringBuilder(columns.mkString(",") + "\n")
+    var rowNum = 1
+    var adding = true
+    while (adding) {
+      System.out.println(s"  ${ANSI_BOLD}Riga $rowNum${ANSI_RESET} — Invio vuoto sul primo campo per terminare:")
+      val vals = columns.map(col => WizardIO.prompt(s"    $col"))
+      if (vals.head.isEmpty) {
+        adding = false
+      } else {
+        val escaped = vals.map(v =>
+          if (v.contains(",") || v.contains("\"")) s""""${v.replace("\"", "\"\"")}"""" else v)
+        sb.append(escaped.mkString(",") + "\n")
+        rowNum += 1
+      }
+    }
+    sb.toString
+  }
+
+  // stageText: raw string representation of all stage args (scanned for $col patterns)
+  // suggestedName: used as dataset name prefix
+  // Returns Some(datasetId) or None if skipped
+  protected def runDatasetWizard(stageText: String, suggestedName: String): Option[String] = {
+    implicit val _cmd: BaseSubCommand = self
+    val cols = extractColumns(stageText)
+    WizardIO.header("Dataset di input")
+
+    if (cols.isEmpty) {
+      // No $col variables found — auto-generate single-row trigger dataset
+      System.out.println(s"  ${ANSI_YELLOW}Nessuna variabile \$$col trovata negli stage.${ANSI_RESET}")
+      System.out.println(s"  Il job richiede un dataset di input anche senza variabili.")
+      System.out.println(s"  Creo un dataset trigger con una sola riga (valore arbitrario).\n")
+      val name = WizardIO.prompt("Nome dataset di default", suggestedName + "-default-input")
+      System.out.println(s"  ${ANSI_CYAN}Upload...${ANSI_RESET}")
+      val csv = "_trigger\n1\n"
+      val result = uploadDatasetCsvMultipart(name, csv.getBytes("UTF-8"))
+      result.foreach(id => System.out.println(s"  ${ANSI_GREEN}✓ Dataset trigger — id: $id${ANSI_RESET}"))
+      result
+
+    } else {
+      System.out.println(s"  Variabili trovate: ${cols.map(c => s"${ANSI_CYAN}$$$c${ANSI_RESET}").mkString("  ")}")
+      System.out.println(s"  Colonne richieste: ${ANSI_BOLD}${cols.mkString(", ")}${ANSI_RESET}")
+      System.out.println(s"  Ogni riga del dataset = un'iterazione del workflow.\n")
+      System.out.println(s"  ${ANSI_CYAN}[1]${ANSI_RESET} Costruisci nuovo dataset (inserisci righe)")
+      System.out.println(s"  ${ANSI_CYAN}[2]${ANSI_RESET} Usa dataset esistente (valida colonne)")
+      System.out.println(s"  ${ANSI_CYAN}[3]${ANSI_RESET} Salta\n")
+      val choice = WizardIO.prompt("Scelta", "1")
+
+      choice match {
+        case "2" =>
+          val dsNode = OpenApiHttp.getJson(self.apiClient(), "/webrobot/api/datasets")
+          val dsList = if (dsNode != null && dsNode.isArray) dsNode.elements().asScala.toList else List.empty
+          if (dsList.isEmpty) {
+            System.out.println(s"  ${ANSI_YELLOW}Nessun dataset trovato.${ANSI_RESET}"); None
+          } else {
+            System.out.println()
+            dsList.zipWithIndex.foreach { case (d, i) =>
+              val id   = Option(d.get("id")).map(_.asText("")).getOrElse("")
+              val name = Option(d.get("name")).map(_.asText("")).getOrElse(id)
+              System.out.println(s"  [${i + 1}] ${ANSI_BOLD}$name${ANSI_RESET}  ${ANSI_CYAN}($id)${ANSI_RESET}")
+            }
+            System.out.println()
+            val pick = WizardIO.prompt("Dataset (numero o id)")
+            val dsId = try {
+              val n = pick.toInt
+              if (n >= 1 && n <= dsList.size) Option(dsList(n - 1).get("id")).map(_.asText("")).getOrElse("") else pick
+            } catch { case _: NumberFormatException => pick }
+            if (dsId.isEmpty) None
+            else {
+              System.out.println(s"\n  ${ANSI_YELLOW}Assicurati che il dataset contenga le colonne: ${ANSI_BOLD}${cols.mkString(", ")}${ANSI_RESET}")
+              if (WizardIO.confirm("Le colonne sono presenti e corrette?")) Some(dsId) else None
+            }
+          }
+
+        case "3" => None
+
+        case _ =>
+          val csv       = buildCsvInteractive(cols)
+          val rowCount  = csv.linesIterator.count(_.trim.nonEmpty) - 1
+          if (rowCount <= 0) {
+            System.out.println(s"  ${ANSI_YELLOW}Nessuna riga inserita, dataset saltato.${ANSI_RESET}"); None
+          } else {
+            val name = WizardIO.prompt("Nome dataset", suggestedName + "-input")
+            System.out.println(s"  ${ANSI_CYAN}Upload $rowCount riga/righe...${ANSI_RESET}")
+            val result = uploadDatasetCsvMultipart(name, csv.getBytes("UTF-8"))
+            result.foreach(id => System.out.println(s"  ${ANSI_GREEN}✓ Dataset caricato ($rowCount righe) — id: $id${ANSI_RESET}"))
+            result
+          }
+      }
+    }
   }
 }
 
@@ -228,7 +331,6 @@ class AgentWizardCommand extends BaseSubCommand {
       case "3" => None
 
       case _ =>
-        // Interactive stage composition — nessun progetto/input/output/schedule
         try { StageCatalog.fetchRemote(apiClient()) } catch { case _: Exception => }
         System.out.println(s"\n  Categorie: ${ANSI_CYAN}${StageCatalog.categories.mkString(" | ")}${ANSI_RESET}")
         System.out.println(s"  Digita nome stage o categoria; Invio vuoto per terminare.\n")
@@ -299,7 +401,7 @@ class AgentWizardCommand extends BaseSubCommand {
     System.out.println(s"\n  ${ANSI_GREEN}Agent creato!${ANSI_RESET}")
     if (newId.nonEmpty) System.out.println(s"  id: ${ANSI_BOLD}$newId${ANSI_RESET}")
     System.out.println(s"\n  Prossimi passi:")
-    System.out.println(s"  ${ANSI_CYAN}webrobot agent get -c $categoryId -i $newId${ANSI_RESET}")
+    System.out.println(s"  ${ANSI_CYAN}webrobot wizard job${ANSI_RESET}  — crea il job e il dataset di input")
   }
 }
 
@@ -310,7 +412,7 @@ class AgentWizardCommand extends BaseSubCommand {
   sortOptions = false,
   description = Array("Wizard interattivo per creare ed eseguire una pipeline.")
 )
-class PipelineWizardCommand extends BaseSubCommand {
+class PipelineWizardCommand extends BaseSubCommand with DatasetWizard {
 
   @Opt(names = Array("-f", "--file"), description = Array("File YAML di output (default: pipeline.yaml)"))
   private var outputFile: String = "pipeline.yaml"
@@ -362,11 +464,7 @@ class PipelineWizardCommand extends BaseSubCommand {
                  .asInstanceOf[scala.collection.mutable.Map[String, Any]]
     spec("project") = projectRef
 
-    // ── 3. Input dataset ───────────────────────────────────────────────────
-    val inputDs = WizardIO.prompt("Dataset di input (id o lascia vuoto per saltare)")
-    if (inputDs.nonEmpty) YamlManifest.setInput(pd, Some(inputDs), None)
-
-    // ── 4. Stage loop guidato ──────────────────────────────────────────────
+    // ── 3. Stage loop guidato ──────────────────────────────────────────────
     WizardIO.header("Composizione pipeline — Stage")
     System.out.println(s"  Categorie disponibili: ${ANSI_CYAN}${StageCatalog.categories.mkString(" | ")}${ANSI_RESET}")
     System.out.println(s"  Digita il nome di uno stage, una categoria per filtrare, oppure Invio per terminare.\n")
@@ -387,6 +485,14 @@ class PipelineWizardCommand extends BaseSubCommand {
         if (stageName.nonEmpty && addStageToManifest(pd, stageName)) stageCount += 1
       }
     }
+
+    // ── 4. Dataset di input (analisi $col dagli stage) ─────────────────────
+    val stageText = {
+      val sl = YamlManifest.stageList(pd)
+      (0 until sl.size()).map(sl.get).mkString(" ")
+    }
+    val inputDatasetId = runDatasetWizard(stageText, pipelineName)
+    inputDatasetId.foreach(id => YamlManifest.setInput(pd, Some(id), None))
 
     // ── 5. Output ──────────────────────────────────────────────────────────
     WizardIO.header("Output")
@@ -477,6 +583,154 @@ class PipelineWizardCommand extends BaseSubCommand {
   }
 }
 
+// ─── job wizard ───────────────────────────────────────────────────────────────
+
+@Command(
+  name = "job",
+  sortOptions = false,
+  description = Array("Wizard interattivo per creare un job, configurare il dataset di input ed eseguire.")
+)
+class JobWizardCommand extends BaseSubCommand with DatasetWizard {
+
+  @Opt(names = Array("-F", "--follow"), description = Array("Segui l'esecuzione dopo l'avvio"))
+  private var follow: Boolean = false
+
+  override def startRun(): Unit = {
+    this.init()
+    implicit val self: BaseSubCommand = this
+
+    WizardIO.header("Wizard — Nuovo Job")
+
+    // ── 1. Progetto ────────────────────────────────────────────────────────
+    System.out.println(s"  ${ANSI_CYAN}Caricamento progetti...${ANSI_RESET}")
+    val projNode = OpenApiHttp.getJson(apiClient(), "/webrobot/api/projects")
+    val projects = if (projNode != null && projNode.isArray) projNode.elements().asScala.toList else List.empty
+    if (projects.isEmpty) { System.out.println(s"  ${ANSI_RED}Nessun progetto trovato.${ANSI_RESET}"); return }
+    System.out.println()
+    projects.zipWithIndex.foreach { case (p, i) =>
+      val id   = Option(p.get("id")).map(_.asText("")).getOrElse("")
+      val name = Option(p.get("name")).map(_.asText("")).getOrElse(id)
+      System.out.println(s"  [${i + 1}] ${ANSI_BOLD}$name${ANSI_RESET}  ${ANSI_CYAN}($id)${ANSI_RESET}")
+    }
+    System.out.println()
+    val projInput = WizardIO.prompt("Progetto (numero o id)")
+    val projectId = try {
+      val n = projInput.toInt
+      if (n >= 1 && n <= projects.size) Option(projects(n - 1).get("id")).map(_.asText("")).getOrElse("") else projInput
+    } catch { case _: NumberFormatException => projInput }
+    if (projectId.isEmpty) { System.out.println(s"  ${ANSI_RED}Progetto non valido.${ANSI_RESET}"); return }
+
+    // ── 2. Agent (per categoria) ───────────────────────────────────────────
+    System.out.println()
+    System.out.println(s"  ${ANSI_CYAN}Caricamento categorie...${ANSI_RESET}")
+    val catsNode = OpenApiHttp.getJson(apiClient(), "/webrobot/api/categories")
+    val cats     = if (catsNode != null && catsNode.isArray) catsNode.elements().asScala.toList else List.empty
+    System.out.println()
+    cats.zipWithIndex.foreach { case (c, i) =>
+      val id   = Option(c.get("id")).map(_.asText("")).getOrElse("")
+      val name = Option(c.get("name")).map(_.asText("")).getOrElse(id)
+      System.out.println(s"  [${i + 1}] $name  ${ANSI_CYAN}($id)${ANSI_RESET}")
+    }
+    System.out.println()
+    val catPick = WizardIO.prompt("Categoria agent (numero o id, Invio per inserire id diretto)")
+
+    val (agentId, agentCategoryId) = if (catPick.nonEmpty) {
+      val catId = try {
+        val n = catPick.toInt
+        if (n >= 1 && n <= cats.size) Option(cats(n - 1).get("id")).map(_.asText("")).getOrElse("") else catPick
+      } catch { case _: NumberFormatException => catPick }
+
+      val agentsNode = OpenApiHttp.getJson(apiClient(), "/webrobot/api/agents/" + apiClient().escapeString(catId))
+      val agents     = if (agentsNode != null && agentsNode.isArray) agentsNode.elements().asScala.toList else List.empty
+
+      if (agents.isEmpty) {
+        System.out.println(s"  ${ANSI_YELLOW}Nessun agent in questa categoria.${ANSI_RESET}")
+        (WizardIO.prompt("Agent id (manuale)"), catId)
+      } else {
+        System.out.println()
+        agents.zipWithIndex.foreach { case (a, i) =>
+          val id   = Option(a.get("id")).map(_.asText("")).getOrElse("")
+          val name = Option(a.get("name")).map(_.asText("")).getOrElse(id)
+          System.out.println(s"  [${i + 1}] ${ANSI_BOLD}$name${ANSI_RESET}  ${ANSI_CYAN}($id)${ANSI_RESET}")
+        }
+        System.out.println()
+        val agPick = WizardIO.prompt("Agent (numero o id)")
+        val aid = try {
+          val n = agPick.toInt
+          if (n >= 1 && n <= agents.size) Option(agents(n - 1).get("id")).map(_.asText("")).getOrElse("") else agPick
+        } catch { case _: NumberFormatException => agPick }
+        (aid, catId)
+      }
+    } else {
+      val catId2 = WizardIO.prompt("Categoria id")
+      val aid    = WizardIO.prompt("Agent id")
+      (aid, catId2)
+    }
+
+    if (agentId.isEmpty) { System.out.println(s"  ${ANSI_RED}Agent obbligatorio.${ANSI_RESET}"); return }
+
+    // ── 3. Leggi codice agent per estrarre $col ────────────────────────────
+    val agentCode: String = try {
+      val path = "/webrobot/api/agents/" + apiClient().escapeString(agentCategoryId) +
+                 "/" + apiClient().escapeString(agentId)
+      val node = OpenApiHttp.getJson(apiClient(), path)
+      if (node != null) Option(node.get("code")).map(_.asText("")).getOrElse("") else ""
+    } catch { case _: Exception => "" }
+
+    // ── 4. Nome e descrizione job ──────────────────────────────────────────
+    System.out.println()
+    val jobName = WizardIO.prompt("Nome job")
+    if (jobName.isEmpty) { System.out.println(s"  ${ANSI_RED}Nome obbligatorio.${ANSI_RESET}"); return }
+    val jobDesc = WizardIO.prompt("Descrizione (opzionale)")
+
+    // ── 5. Dataset wizard ──────────────────────────────────────────────────
+    val datasetId = runDatasetWizard(agentCode, jobName)
+    if (datasetId.isEmpty) {
+      System.out.println(s"  ${ANSI_YELLOW}Dataset non configurato — impossibile creare il job.${ANSI_RESET}"); return
+    }
+
+    // ── 6. Crea job ────────────────────────────────────────────────────────
+    WizardIO.showCommand(this,
+      s"""webrobot job add -p $projectId -n "$jobName" -a $agentId -i ${datasetId.get}""")
+    if (!WizardIO.confirm("Creare il job?")) { System.out.println("  Annullato."); return }
+
+    val dto = new JobDto()
+    dto.setProjectId(projectId)
+    dto.setName(jobName)
+    if (jobDesc.nonEmpty) dto.setDescription(jobDesc)
+    dto.setAgentId(agentId)
+    dto.setInputDatasetId(datasetId.get)
+    val jobNode = OpenApiHttp.postJson(apiClient(),
+      "/webrobot/api/projects/id/" + apiClient().escapeString(projectId) + "/jobs", dto)
+    val jobId = if (jobNode != null) Option(jobNode.get("id")).map(_.asText("")).getOrElse("") else ""
+    if (jobId.isEmpty) {
+      System.out.println(s"  ${ANSI_YELLOW}Job creato ma id non estratto.${ANSI_RESET}")
+      JsonCliUtil.printJson(jobNode)
+      return
+    }
+    System.out.println(s"\n  ${ANSI_GREEN}✓ Job creato — id: ${ANSI_BOLD}$jobId${ANSI_RESET}")
+
+    // ── 7. Esegui? ─────────────────────────────────────────────────────────
+    if (!WizardIO.confirm("Avviare l'esecuzione ora?")) {
+      System.out.println(s"  ${ANSI_CYAN}webrobot job execute -p $projectId -j $jobId --follow${ANSI_RESET}")
+      return
+    }
+    val execPath = "/webrobot/api/projects/id/" + apiClient().escapeString(projectId) +
+                  "/jobs/" + apiClient().escapeString(jobId) + "/execute"
+    val execNode = OpenApiHttp.postJson(apiClient(), execPath,
+                    com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode())
+    val execId   = extractJsonField(execNode, "executionId", "id", "execution_id", "executionReferenceId")
+    if (execId == null || execId.isEmpty) {
+      System.out.println(s"  ${ANSI_YELLOW}Esecuzione avviata ma executionId non trovato.${ANSI_RESET}")
+      JsonCliUtil.printJson(execNode)
+      return
+    }
+    System.out.println(s"  ${ANSI_GREEN}✓ Esecuzione avviata — id: ${ANSI_BOLD}$execId${ANSI_RESET}")
+    if (follow) followExecution(projectId, jobId, execId)
+    else System.out.println(s"  ${ANSI_CYAN}webrobot job execute -p $projectId -j $jobId --follow${ANSI_RESET}")
+  }
+}
+
 // ─── wizard (gruppo) ──────────────────────────────────────────────────────────
 
 @Command(
@@ -487,16 +741,18 @@ class PipelineWizardCommand extends BaseSubCommand {
   footer = Array(
     "",
     "Esempi:",
-    "  webrobot wizard agent             -- crea un agent passo-passo",
-    "  webrobot wizard pipeline          -- crea ed esegui una pipeline",
+    "  webrobot wizard agent             -- crea un agent con stage composer",
+    "  webrobot wizard pipeline          -- crea pipeline + dataset + esegui",
+    "  webrobot wizard job               -- crea job + dataset di input + esegui",
     "  webrobot wizard pipeline -f my.yaml --follow",
     ""
   ),
   subcommands = Array(
     classOf[AgentWizardCommand],
-    classOf[PipelineWizardCommand]
+    classOf[PipelineWizardCommand],
+    classOf[JobWizardCommand]
   )
 )
 class RunWizardCommand extends Runnable {
-  def run(): Unit = System.err.println("Uso: webrobot wizard <agent|pipeline>")
+  def run(): Unit = System.err.println("Uso: webrobot wizard <agent|pipeline|job>")
 }

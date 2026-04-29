@@ -103,6 +103,54 @@ class BaseSubCommand extends Runnable {
     }
   }
 
+  protected def uploadDatasetCsvMultipart(name: String, csvBytes: Array[Byte], datasetType: String = "input"): Option[String] = {
+    try {
+      val boundary = "----WebRobotCli" + System.currentTimeMillis()
+      val body = new java.io.ByteArrayOutputStream()
+
+      def writePart(field: String, value: String): Unit = {
+        val s = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + field + "\"\r\n\r\n" + value + "\r\n"
+        body.write(s.getBytes("UTF-8"))
+      }
+
+      def writeFilePart(field: String, filename: String, data: Array[Byte]): Unit = {
+        val h = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + field + "\"; filename=\"" + filename + "\"\r\nContent-Type: text/csv\r\n\r\n"
+        body.write(h.getBytes("UTF-8"))
+        body.write(data)
+        body.write("\r\n".getBytes("UTF-8"))
+      }
+
+      writeFilePart("file", name + ".csv", csvBytes)
+      writePart("datasetType", datasetType)
+      writePart("name", name)
+      body.write(s"--$boundary--\r\n".getBytes("UTF-8"))
+
+      val base = { val b = apiClient().getBasePath; if (b.endsWith("/")) b.dropRight(1) else b }
+      val url2 = new URL(base + "/webrobot/api/datasets/upload")
+      val conn = url2.openConnection().asInstanceOf[HttpURLConnection]
+      conn.setDoOutput(true)
+      conn.setRequestMethod("POST")
+      conn.setRequestProperty("Content-Type", s"multipart/form-data; boundary=$boundary")
+      val auth = generateAuthHeader()
+      if (auth != null && auth.nonEmpty) conn.setRequestProperty("Authorization", auth)
+      val key = generateApiKeyHeader()
+      if (key != null && key.nonEmpty) conn.setRequestProperty("X-API-Key", key)
+      conn.getOutputStream.write(body.toByteArray)
+      conn.getOutputStream.close()
+
+      val code = conn.getResponseCode
+      val stream2 = if (code >= 200 && code < 300) conn.getInputStream else conn.getErrorStream
+      val resp = IOUtils.toString(stream2, "UTF-8")
+      val node = apiClient().getObjectMapper.readTree(resp)
+      val id = node.path("id").asText("")
+      if (id.nonEmpty) Some(id) else None
+    } catch {
+      case e: Exception =>
+        System.out.println(s"  ${ANSI_YELLOW}Errore upload dataset: ${e.getMessage}${ANSI_RESET}")
+        None
+    }
+  }
+
   protected def uploadFile(url: URL, stream: InputStream): Unit = {
     val connection = url.openConnection.asInstanceOf[HttpURLConnection]
     connection.setDoOutput(true)
