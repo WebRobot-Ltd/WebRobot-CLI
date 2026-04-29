@@ -19,7 +19,8 @@ import org.webrobot.cli.commands.{
   RunPipelineCommand,
   RunProjectCommand,
   RunPythonExtCommand,
-  RunTaskCommand
+  RunTaskCommand,
+  RunWizardCommand
 }
 
 /** Radice Picocli — allineata all'OpenAPI https://api.webrobot.eu/api/openapi.json (138 path). */
@@ -36,6 +37,7 @@ import org.webrobot.cli.commands.{
   footer = Array(
     "",
     "Gruppi disponibili:",
+    "  Wizard:            wizard agent | wizard pipeline",
     "  Manifest:          manifest | pipeline",
     "  ETL Core:          project | category | agent | job | task | execution",
     "  Dati:              dataset | datasets-legacy | cloud-credentials",
@@ -58,6 +60,8 @@ import org.webrobot.cli.commands.{
     "Per help su un gruppo: webrobot <gruppo> --help"
   ),
   subcommands = Array(
+    // Wizard
+    classOf[RunWizardCommand],
     // Manifest
     classOf[RunManifestCommand],
     classOf[RunPipelineCommand],
