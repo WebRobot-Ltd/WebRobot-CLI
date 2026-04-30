@@ -17,6 +17,7 @@ import org.webrobot.cli.commands.{
   RunJobCommand,
   RunManifestCommand,
   RunPipelineCommand,
+  RunPluginCommand,
   RunProjectCommand,
   RunPythonExtCommand,
   RunTaskCommand,
@@ -44,6 +45,7 @@ import org.webrobot.cli.commands.{
     "  Identità & accesso:auth | billing",
     "  Infrastruttura:    cloud | admin",
     "  AI & estensioni:   ai-providers | python-ext",
+    "  Plugin factory:    plugin new | plugin add stage | plugin add resolver | plugin add action",
     "  Pacchetti:         package",
     "",
     "Esempi rapidi:",
@@ -86,7 +88,9 @@ import org.webrobot.cli.commands.{
     classOf[RunAiProvidersCommand],
     classOf[RunPythonExtCommand],
     // Pacchetti
-    classOf[RunImportExportCommand]
+    classOf[RunImportExportCommand],
+    // Plugin factory
+    classOf[RunPluginCommand]
   )
 )
 class WebRobotCliCommand extends Runnable {
