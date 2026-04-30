@@ -12,6 +12,7 @@ import org.webrobot.cli.commands.{
   RunCloudCredentialsCommand,
   RunDatasetCommand,
   RunDatasetLegacyCommand,
+  RunEanCommand,
   RunExecutionCommand,
   RunImportExportCommand,
   RunJobCommand,
@@ -45,6 +46,7 @@ import org.webrobot.cli.commands.{
     "  Identità & accesso:auth | billing",
     "  Infrastruttura:    cloud | admin",
     "  AI & estensioni:   ai-providers | python-ext",
+    "  EAN sourcing:      ean info | ean status | ean upload | ean execute | ean query | ean images",
     "  Plugin factory:    plugin new | plugin add stage | plugin add resolver | plugin add action",
     "  Pacchetti:         package",
     "",
@@ -87,6 +89,8 @@ import org.webrobot.cli.commands.{
     // AI & estensioni
     classOf[RunAiProvidersCommand],
     classOf[RunPythonExtCommand],
+    // EAN image sourcing (legacy internal plugin)
+    classOf[RunEanCommand],
     // Pacchetti
     classOf[RunImportExportCommand],
     // Plugin factory
