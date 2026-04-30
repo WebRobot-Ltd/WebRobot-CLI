@@ -18,6 +18,13 @@
 
     <!-- Risoluzione dipendenze: Maven Central (default). Nessun repository GitHub Packages. -->
 
+    <repositories>
+        <repository>
+            <id>github-cli-sdk</id>
+            <url>https://maven.pkg.github.com/WebRobot-Ltd/webrobot-cli-sdk</url>
+        </repository>
+    </repositories>
+
     <!-- Deploy: ossrh-staging-api (post-OSSRH s01); token Central Portal. Vedi WebRobot.Sdk/pom.xml commento. -->
     <distributionManagement>
         <repository>
@@ -171,6 +178,13 @@
             <artifactId>config</artifactId>
             <version>1.2.0</version>
         </dependency>
+        <!-- CLI Plugin SDK — interfaccia WebroCliPlugin per estensione comandi via plugin JAR -->
+        <dependency>
+            <groupId>eu.webrobot</groupId>
+            <artifactId>webrobot-cli-sdk</artifactId>
+            <version>0.1.0</version>
+        </dependency>
+
         <!-- webrobot.eu:org.webrobot.sdk — versione da GPR (proprietà webrobot.sdk.depversion) -->
         <dependency>
             <groupId>webrobot.eu</groupId>

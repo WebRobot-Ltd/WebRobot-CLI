@@ -27,6 +27,8 @@ object RunWebRobotCli extends App {
   }
 
   config = loadCredentialsConfig()
-  val exitCode = new CommandLine(new WebRobotCliCommand()).execute(args: _*)
+  val cmd = new CommandLine(new WebRobotCliCommand())
+  CliPluginLoader.loadAll(cmd)
+  val exitCode = cmd.execute(args: _*)
   sys.exit(exitCode)
 }
