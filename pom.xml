@@ -20,8 +20,8 @@
 
     <repositories>
         <repository>
-            <id>github-cli-sdk</id>
-            <url>https://maven.pkg.github.com/WebRobot-Ltd/webrobot-cli-sdk</url>
+            <id>jitpack.io</id>
+            <url>https://jitpack.io</url>
         </repository>
     </repositories>
 
@@ -180,9 +180,9 @@
         </dependency>
         <!-- CLI Plugin SDK — interfaccia WebroCliPlugin per estensione comandi via plugin JAR -->
         <dependency>
-            <groupId>eu.webrobot</groupId>
+            <groupId>com.github.WebRobot-Ltd</groupId>
             <artifactId>webrobot-cli-sdk</artifactId>
-            <version>0.1.0</version>
+            <version>v0.1.0</version>
         </dependency>
 
         <!-- webrobot.eu:org.webrobot.sdk — versione da GPR (proprietà webrobot.sdk.depversion) -->
