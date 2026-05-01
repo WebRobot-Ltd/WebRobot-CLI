@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Installa la CLI WebRobot (uber-jar) da WEBROBOT_CLI_JAR_URL e crea il wrapper `webrobot` sotto PREFIX.
+# Installa anche i prerequisiti Python per il wizard probe (browser-use + camoufox).
 #
 # Obbligatorio:
 #   WEBROBOT_CLI_JAR_URL   URL HTTP(S) diretto al .jar (curl).
@@ -8,12 +9,16 @@
 #   (pubblicazione: workflow .github/workflows/release-cli-jar.yml su GitHub Actions)
 #
 # Opzionale:
-#   PREFIX                     default: $HOME/.local  (jar in PREFIX/share/webrobot-cli, bin in PREFIX/bin)
-#   WEBROBOT_JAVA              se impostato, prova per primo questo eseguibile (path assoluto consigliato)
-#   WEBROBOT_AUTO_JRE          default: true — se true e non c’è una JVM idonea, scarica Eclipse Temurin JRE
-#                              sotto PREFIX/share/webrobot-cli/jre (senza sudo)
+#   PREFIX                        default: $HOME/.local  (jar in PREFIX/share/webrobot-cli, bin in PREFIX/bin)
+#   WEBROBOT_JAVA                 se impostato, prova per primo questo eseguibile (path assoluto consigliato)
+#   WEBROBOT_AUTO_JRE             default: true — se true e non c’è una JVM idonea, scarica Eclipse Temurin JRE
+#                                 sotto PREFIX/share/webrobot-cli/jre (senza sudo)
 #   WEBROBOT_JRE_FEATURE_VERSION  major Temurin da installare se serve (default: 17)
-#   WEBROBOT_JVM_MIN_MAJOR     versione major minima accettata (default: 8)
+#   WEBROBOT_JVM_MIN_MAJOR        versione major minima accettata (default: 8)
+#   WEBROBOT_INSTALL_BROWSER_DEPS default: true — installa browser-use, camoufox e provider LLM Python
+#   WEBROBOT_PYTHON               interprete Python da usare (default: python3)
+#   WEBROBOT_PYTHON_MIN_MINOR     versione minore minima Python 3.x richiesta (default: 11)
+#   WEBROBOT_SKIP_CAMOUFOX_FETCH  default: false — se true salta il download del binario camoufox (~100 MB)
 #
 # Dipendenze host: curl, tar. (gzip incluso in tar -xzf)
 #
@@ -37,6 +42,10 @@ JAR_PATH="${INSTALL_DIR}/webrobot-cli.jar"
 WEBROBOT_AUTO_JRE="${WEBROBOT_AUTO_JRE:-true}"
 WEBROBOT_JRE_FEATURE_VERSION="${WEBROBOT_JRE_FEATURE_VERSION:-17}"
 WEBROBOT_JVM_MIN_MAJOR="${WEBROBOT_JVM_MIN_MAJOR:-8}"
+WEBROBOT_INSTALL_BROWSER_DEPS="${WEBROBOT_INSTALL_BROWSER_DEPS:-true}"
+WEBROBOT_PYTHON="${WEBROBOT_PYTHON:-python3}"
+WEBROBOT_PYTHON_MIN_MINOR="${WEBROBOT_PYTHON_MIN_MINOR:-11}"
+WEBROBOT_SKIP_CAMOUFOX_FETCH="${WEBROBOT_SKIP_CAMOUFOX_FETCH:-false}"
 
 command -v curl >/dev/null 2>&1 || { echo "curl non trovato" >&2; exit 1; }
 command -v tar >/dev/null 2>&1 || { echo "tar non trovato" >&2; exit 1; }
@@ -167,9 +176,90 @@ chmod 0755 "${BIN_DIR}/webrobot"
 trap - EXIT
 rm -f "$TMP"
 
+# ── Python / browser-use / camoufox ──────────────────────────────────────────
+
+python_minor_version() {
+  local py="$1"
+  local out
+  out="$("$py" -c 'import sys; print(sys.version_info.minor)' 2>/dev/null)" || return 1
+  echo "$out"
+}
+
+python_meets_minimum() {
+  local py="$1"
+  local minor
+  minor="$(python_minor_version "$py")" || return 1
+  [[ "$minor" -ge "$WEBROBOT_PYTHON_MIN_MINOR" ]]
+}
+
+pick_python() {
+  local candidates=("$WEBROBOT_PYTHON" python3 python3.13 python3.12 python3.11)
+  local c
+  for c in "${candidates[@]}"; do
+    [[ -z "$c" ]] && continue
+    if command -v "$c" >/dev/null 2>&1; then
+      if python_meets_minimum "$c"; then
+        printf '%s' "$c"
+        return 0
+      fi
+    fi
+  done
+  return 1
+}
+
+install_browser_deps() {
+  local py="$1"
+  local pip_packages=(
+    "browser-use"
+    "camoufox[geoip]"
+    "langchain-anthropic"
+    "langchain-openai"
+    "langchain-groq"
+  )
+
+  echo ""
+  echo "▶ [Python] Installazione browser-use + camoufox (wizard probe)..."
+  if ! "$py" -m pip install --upgrade "${pip_packages[@]}"; then
+    echo "⚠ Installazione pacchetti pip fallita. Il wizard probe non sarà disponibile." >&2
+    echo "  Riprova manualmente: $py -m pip install browser-use 'camoufox[geoip]'" >&2
+    return 0
+  fi
+  echo "✓ Pacchetti Python installati"
+
+  if [[ "${WEBROBOT_SKIP_CAMOUFOX_FETCH}" == "true" ]] || [[ "${WEBROBOT_SKIP_CAMOUFOX_FETCH}" == "1" ]]; then
+    echo "  (download binario camoufox saltato — WEBROBOT_SKIP_CAMOUFOX_FETCH=true)"
+    echo "  Scarica in seguito con: $py -m camoufox fetch"
+    return 0
+  fi
+
+  echo "▶ [Python] Download binario camoufox (~100 MB, Firefox anti-detection)..."
+  if ! "$py" -m camoufox fetch; then
+    echo "⚠ Download binario camoufox fallito. Scarica in seguito con: $py -m camoufox fetch" >&2
+  else
+    echo "✓ Binario camoufox scaricato"
+  fi
+}
+
+PYTHON_BIN=""
+if [[ "${WEBROBOT_INSTALL_BROWSER_DEPS}" == "true" ]] || [[ "${WEBROBOT_INSTALL_BROWSER_DEPS}" == "1" ]]; then
+  if PYTHON_BIN="$(pick_python 2>/dev/null)"; then
+    install_browser_deps "$PYTHON_BIN"
+  else
+    echo ""
+    echo "⚠ Python >= 3.${WEBROBOT_PYTHON_MIN_MINOR} non trovato — browser-use e camoufox non installati." >&2
+    echo "  Installa Python 3.11+ e riesegui, oppure imposta WEBROBOT_PYTHON=/path/to/python3." >&2
+    echo "  Per saltare: WEBROBOT_INSTALL_BROWSER_DEPS=false" >&2
+  fi
+fi
+
+# ── riepilogo ─────────────────────────────────────────────────────────────────
+
+echo ""
 echo "Installato:"
-echo "  Java: ${JAVA_ABS}"
-echo "  JAR:  ${JAR_PATH}"
-echo "  Bin:  ${BIN_DIR}/webrobot"
+echo "  Java:   ${JAVA_ABS}"
+echo "  JAR:    ${JAR_PATH}"
+echo "  Bin:    ${BIN_DIR}/webrobot"
+[[ -n "$PYTHON_BIN" ]] && echo "  Python: ${PYTHON_BIN} (browser-use + camoufox)"
+echo ""
 echo "Aggiungi al PATH se serve: export PATH=\"${BIN_DIR}:\$PATH\""
 echo "Test: ${BIN_DIR}/webrobot --help"
