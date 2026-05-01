@@ -441,6 +441,15 @@ private object BrowserUseProbe {
       java.nio.file.Files.write(scriptFile.toPath, PROBE_SCRIPT.getBytes("UTF-8"))
       val pb = new ProcessBuilder("python3", scriptFile.getAbsolutePath, url, objective)
       pb.environment().putAll(System.getenv())
+      val cfgValues = ConfigHelper.readValues()
+      def injectKey(field: String, envVar: String): Unit = {
+        val v = cfgValues.getOrElse(field, "")
+        if (v.nonEmpty && !pb.environment().containsKey(envVar)) pb.environment().put(envVar, v)
+      }
+      injectKey("anthropic_api_key",  "ANTHROPIC_API_KEY")
+      injectKey("openai_api_key",     "OPENAI_API_KEY")
+      injectKey("groq_api_key",       "GROQ_API_KEY")
+      injectKey("togetherai_api_key", "TOGETHERAI_API_KEY")
       val proc     = pb.start()
       val stdout   = new String(proc.getInputStream.readAllBytes(), "UTF-8").trim
       val stderr   = new String(proc.getErrorStream.readAllBytes(), "UTF-8").trim

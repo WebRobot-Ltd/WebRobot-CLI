@@ -10,6 +10,7 @@ import org.webrobot.cli.commands.{
   RunCategoryCommand,
   RunCloudCommand,
   RunCloudCredentialsCommand,
+  RunConfigCommand,
   RunDatasetCommand,
   RunDatasetLegacyCommand,
   RunEanCommand,
@@ -49,6 +50,7 @@ import org.webrobot.cli.commands.{
     "  EAN sourcing:      ean info | ean status | ean upload | ean execute | ean query | ean images",
     "  Plugin factory:    plugin new | plugin add stage | plugin add resolver | plugin add action",
     "  Pacchetti:         package",
+    "  Configurazione:    config show | config set | config init",
     "",
     "Esempi rapidi:",
     "  webrobot project list",
@@ -94,7 +96,9 @@ import org.webrobot.cli.commands.{
     // Pacchetti
     classOf[RunImportExportCommand],
     // Plugin factory
-    classOf[RunPluginCommand]
+    classOf[RunPluginCommand],
+    // Config
+    classOf[RunConfigCommand]
   )
 )
 class WebRobotCliCommand extends Runnable {
