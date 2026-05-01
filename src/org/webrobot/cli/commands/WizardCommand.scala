@@ -151,15 +151,20 @@ private object StageWizardHelper {
     val mapper    = new com.fasterxml.jackson.databind.ObjectMapper()
 
     // Build catalog grouped: AI-powered stages flagged explicitly
-    val aiKeywords = Set("iextract", "llm", "ai_", "_ai", "gpt", "inference", "smart", "intelligent")
-    def isAi(name: String, desc: String): Boolean =
-      aiKeywords.exists(k => name.contains(k) || desc.toLowerCase.contains(k))
+    val aiCategories  = Set("intelligent")
+    val navCategories = Set("crawling", "external-api")
 
-    val (aiStages, detStages) = allStages.partition { s =>
-      val n = s.getOrElse("name", "").toString
-      val d = s.getOrElse("description", "").toString
-      isAi(n, d)
-    }
+    def stageCategory(s: Map[String, Any]): String = s.getOrElse("category", "").toString.toLowerCase
+    def isAi(name: String, cat: String): Boolean    = aiCategories.contains(cat) ||
+      Seq("iextract", "intelligent", "llm_", "_ai", "gpt").exists(name.contains)
+    def isNav(name: String, cat: String): Boolean   = navCategories.contains(cat)
+
+    val navStages  = allStages.filter(s => isNav(s.getOrElse("name","").toString, stageCategory(s)))
+    val aiStages   = allStages.filter(s => isAi(s.getOrElse("name","").toString, stageCategory(s)) &&
+                                           !isNav(s.getOrElse("name","").toString, stageCategory(s)))
+    val detStages  = allStages.filterNot(s =>
+      isAi(s.getOrElse("name","").toString, stageCategory(s)) ||
+      isNav(s.getOrElse("name","").toString, stageCategory(s)))
 
     def fmtStage(s: Map[String, Any]): String = {
       val n = s.getOrElse("name", "").toString
@@ -168,35 +173,37 @@ private object StageWizardHelper {
     }
 
     val catalogSummary =
-      "=== AI-POWERED STAGES (prefer these when quality/robustness matters) ===\n" +
-      (if (aiStages.isEmpty) "  (none)\n" else aiStages.map(fmtStage).mkString("\n") + "\n") +
-      "\n=== DETERMINISTIC STAGES (use when precision/structure is guaranteed) ===\n" +
+      "=== NAVIGATION STAGES (ALWAYS required as first step — never skip) ===\n" +
+      navStages.map(fmtStage).mkString("\n") +
+      "\n\n=== AI-POWERED STAGES (prefer for extraction/processing when content varies) ===\n" +
+      (if (aiStages.isEmpty) "  (none)\n" else aiStages.map(fmtStage).mkString("\n")) +
+      "\n\n=== DETERMINISTIC STAGES (use only when structure is guaranteed) ===\n" +
       detStages.map(fmtStage).mkString("\n")
 
     val systemPrompt =
-      """You are a WebRobot ETL pipeline expert. Your job is to suggest the BEST sequence of stages for a web scraping pipeline.
+      """You are a WebRobot ETL pipeline expert. Suggest the BEST stage sequence for a web scraping pipeline.
 
-IMPORTANT RULES:
-1. ALWAYS prefer AI-powered stages (iextract, llm_*, etc.) over deterministic ones when the task involves understanding content, extracting semantically variable fields, or handling inconsistent page structures.
-2. For each stage where an AI-powered alternative exists, include BOTH options so the user can choose.
-3. Return ONLY a valid JSON array of objects. No markdown, no explanation outside the JSON.
+RULES (follow strictly):
+1. ALWAYS start with a NAVIGATION stage (visit, wget, join, etc.) — it is mandatory to load the page.
+2. For EXTRACTION steps, ALWAYS prefer AI-powered stages (iextract, intelligentExtract, etc.) over deterministic ones when the content may vary across pages. Include the deterministic alternative so the user can choose.
+3. Return ONLY a valid JSON array of objects — no markdown, no explanation outside JSON.
 
 Response format:
 [
   {
-    "stage": "recommended_stage_name",
-    "reason": "one-line explanation of why this stage",
-    "alternatives": ["alt_stage_1"]
+    "stage": "best_stage_name",
+    "reason": "one-line explanation",
+    "alternatives": ["alt_stage"]
   }
 ]
 
-If no AI alternative exists, set "alternatives" to [].
-Only use stage names from the provided catalog."""
+Set "alternatives" to [] when no alternative is relevant.
+Use ONLY stage names from the catalog."""
 
     val userPrompt =
       "STAGE CATALOG:\n" + catalogSummary +
       "\n\n---\nPIPELINE DESCRIPTION: " + description +
-      "\n\nSuggest the best stage sequence. Prefer AI-powered stages. Include alternatives where relevant."
+      "\n\nSuggest the full stage sequence. Start with navigation. Prefer AI-powered extraction. Provide alternatives where applicable."
 
     System.out.println(s"  ${ANSI_CYAN}Chiamata LLM per suggerire stage...${ANSI_RESET}")
     val raw = cmd.llmInfer(userPrompt, systemPrompt).getOrElse("")
