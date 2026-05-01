@@ -6,7 +6,7 @@ import picocli.CommandLine
 import java.io.File
 import java.net.URLClassLoader
 import java.util.ServiceLoader
-import scala.jdk.CollectionConverters._
+import scala.collection.JavaConverters._
 
 /**
  * Discovers WebroCliPlugin implementations from JARs placed in ~/.webrobot/plugins/
@@ -48,7 +48,9 @@ object CliPluginLoader {
 
   private def discoverJars(): Seq[File] = {
     if (!pluginsDir.isDirectory) return Seq.empty
-    Option(pluginsDir.listFiles((_: File, name: String) => name.endsWith(".jar")))
+    Option(pluginsDir.listFiles(new java.io.FilenameFilter {
+      def accept(dir: File, name: String): Boolean = name.endsWith(".jar")
+    }))
       .map(_.toSeq)
       .getOrElse(Seq.empty)
   }

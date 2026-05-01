@@ -7,7 +7,7 @@ import picocli.CommandLine.{Command, Option => Opt, Parameters}
 import java.io.File
 import java.net.{HttpURLConnection, URL}
 import java.nio.file.Files
-import scala.jdk.CollectionConverters._
+import scala.collection.JavaConverters._
 
 // ── root command ──────────────────────────────────────────────────────────────
 
@@ -165,7 +165,7 @@ class EanUploadCommand extends EanBaseCommand {
     val buf = new java.io.ByteArrayOutputStream()
 
     def writeFile(name: String, fname: String, bytes: Array[Byte]): Unit = {
-      buf.write(s"--$boundary\r\nContent-Disposition: form-data; name=\"$name\"; filename=\"$fname\"\r\nContent-Type: text/csv\r\n\r\n".getBytes("UTF-8"))
+      buf.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + name + "\"; filename=\"" + fname + "\"\r\nContent-Type: text/csv\r\n\r\n").getBytes("UTF-8"))
       buf.write(bytes)
       buf.write("\r\n".getBytes("UTF-8"))
     }

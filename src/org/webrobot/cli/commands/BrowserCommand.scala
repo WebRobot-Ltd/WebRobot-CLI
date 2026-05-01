@@ -22,7 +22,7 @@ class RunBrowserStatusCommand extends Runnable {
     System.out.println(ANSI_BOLD + "Browser-Use / Camoufox — stato installazione" + ANSI_RESET)
     System.out.println()
 
-    checkCmd("python3",             "python3 --version")
+    checkCmd("python3",             pythonBin + " --version")
     checkPkg("browser-use",        "browser-use")
     checkPkg("camoufox",           "camoufox")
     checkPkg("langchain-anthropic","langchain-anthropic")
@@ -34,8 +34,13 @@ class RunBrowserStatusCommand extends Runnable {
     System.out.println("Per installare/aggiornare: " + ANSI_CYAN + "bash <(curl -fsSL <URL>/install-webrobot-cli.sh)" + ANSI_RESET)
   }
 
+  private val pythonBin: String =
+    Option(System.getenv("WEBROBOT_PYTHON")).filter(_.nonEmpty).getOrElse("python3")
+
   private def run1(cmd: Seq[String], timeoutSecs: Int = 10): (Int, String) = try {
-    val proc = new ProcessBuilder(cmd: _*).redirectErrorStream(true).start()
+    val pb = new ProcessBuilder(cmd: _*).redirectErrorStream(true)
+    pb.environment().putAll(System.getenv())
+    val proc = pb.start()
     val out  = new String(proc.getInputStream.readAllBytes()).trim
     proc.waitFor(timeoutSecs, java.util.concurrent.TimeUnit.SECONDS)
     (proc.exitValue(), out)
@@ -52,7 +57,7 @@ class RunBrowserStatusCommand extends Runnable {
 
   private def checkPkg(label: String, pipName: String): Unit = {
     val script = "import importlib.metadata; print(importlib.metadata.version('" + pipName + "'))"
-    val (code, out) = run1(Seq("python3", "-c", script))
+    val (code, out) = run1(Seq(pythonBin, "-c", script))
     val ok   = code == 0 && out.nonEmpty && !out.startsWith("Traceback")
     val icon = if (ok) ANSI_GREEN + "✓" + ANSI_RESET else ANSI_RED + "✗" + ANSI_RESET
     val info = if (ok) "  v" + out.take(20) else "  (non installato)"
@@ -64,7 +69,7 @@ class RunBrowserStatusCommand extends Runnable {
       "from camoufox.pkgman import camoufox_path; import os\n" +
       "p = camoufox_path()\n" +
       "print('ok' if os.path.exists(p) else 'fetch')\n"
-    val (code, out) = run1(Seq("python3", "-c", script))
+    val (code, out) = run1(Seq(pythonBin, "-c", script))
     val ok   = code == 0 && out.trim == "ok"
     val icon = if (ok) ANSI_GREEN + "✓" + ANSI_RESET else ANSI_YELLOW + "⚠" + ANSI_RESET
     val info = if (ok) "  binario pronto"

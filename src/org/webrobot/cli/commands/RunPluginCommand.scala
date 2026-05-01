@@ -56,17 +56,17 @@ class PluginNewCommand extends Runnable {
     val pkg = groupId + "." + pluginName.replace("-", "")
 
     createDirs(dir, pkg)
-    writeFile(dir.resolve("settings.gradle.kts"), PluginTemplates.settings(pluginName))
-    writeFile(dir.resolve("build.gradle.kts"),    PluginTemplates.buildGradle(groupId, pluginName, sdkVersion))
-    writeFile(dir.resolve("gradle.properties"),   PluginTemplates.gradleProperties())
-    writeFile(dir.resolve("README.md"),            PluginTemplates.readme(pluginName, groupId))
+    PluginHelpers.writeFile(dir.resolve("settings.gradle.kts"), PluginTemplates.settings(pluginName))
+    PluginHelpers.writeFile(dir.resolve("build.gradle.kts"),    PluginTemplates.buildGradle(groupId, pluginName, sdkVersion))
+    PluginHelpers.writeFile(dir.resolve("gradle.properties"),   PluginTemplates.gradleProperties())
+    PluginHelpers.writeFile(dir.resolve("README.md"),           PluginTemplates.readme(pluginName, groupId))
 
     // Esempio stage incluso di default
     val srcDir = dir.resolve(s"src/main/scala/${pkg.replace('.', '/')}")
-    writeFile(srcDir.resolve("ExampleTransformStage.scala"),
-              PluginTemplates.transformStage(pkg, "ExampleTransform"))
-    writeServiceFile(dir, "eu.webrobot.plugin.sdk.WTransformStage",
-                     Seq(s"$pkg.ExampleTransformStage"))
+    PluginHelpers.writeFile(srcDir.resolve("ExampleTransformStage.scala"),
+                            PluginTemplates.transformStage(pkg, "ExampleTransform"))
+    PluginHelpers.writeServiceFile(dir, "eu.webrobot.plugin.sdk.WTransformStage",
+                                   Seq(s"$pkg.ExampleTransformStage"))
 
     println(
       s"""
@@ -138,7 +138,7 @@ class PluginAddStageCommand extends Runnable {
 
   override def run(): Unit = {
     val root   = Paths.get(projectDir)
-    val pkg    = detectPackage(root)
+    val pkg    = PluginHelpers.detectPackage(root)
     val srcDir = root.resolve(s"src/main/scala/${pkg.replace('.', '/')}")
 
     val (code, serviceIface) = stageType.toLowerCase match {
@@ -153,8 +153,8 @@ class PluginAddStageCommand extends Runnable {
          "eu.webrobot.plugin.sdk.WTransformStage")
     }
 
-    writeFile(srcDir.resolve(s"${stageName}Stage.scala"), code)
-    appendServiceFile(root, serviceIface, s"$pkg.${stageName}Stage")
+    PluginHelpers.writeFile(srcDir.resolve(s"${stageName}Stage.scala"), code)
+    PluginHelpers.appendServiceFile(root, serviceIface, s"$pkg.${stageName}Stage")
 
     println(s"✓ ${stageType.capitalize} stage '${stageName}Stage' aggiunto in $srcDir")
     println(s"  Registrato in META-INF/services/$serviceIface")
@@ -180,13 +180,13 @@ class PluginAddResolverCommand extends Runnable {
 
   override def run(): Unit = {
     val root   = Paths.get(projectDir)
-    val pkg    = detectPackage(root)
+    val pkg    = PluginHelpers.detectPackage(root)
     val srcDir = root.resolve(s"src/main/scala/${pkg.replace('.', '/')}")
 
-    writeFile(srcDir.resolve(s"${resolverName}Resolver.scala"),
-              PluginTemplates.resolver(pkg, resolverName))
-    appendServiceFile(root, "eu.webrobot.plugin.sdk.WResolver",
-                      s"$pkg.${resolverName}Resolver")
+    PluginHelpers.writeFile(srcDir.resolve(s"${resolverName}Resolver.scala"),
+                            PluginTemplates.resolver(pkg, resolverName))
+    PluginHelpers.appendServiceFile(root, "eu.webrobot.plugin.sdk.WResolver",
+                                    s"$pkg.${resolverName}Resolver")
 
     println(s"✓ Resolver '${resolverName}Resolver' aggiunto in $srcDir")
   }
@@ -214,13 +214,13 @@ class PluginAddActionCommand extends Runnable {
 
   override def run(): Unit = {
     val root   = Paths.get(projectDir)
-    val pkg    = detectPackage(root)
+    val pkg    = PluginHelpers.detectPackage(root)
     val srcDir = root.resolve(s"src/main/scala/${pkg.replace('.', '/')}")
 
-    writeFile(srcDir.resolve(s"${actionName}Action.scala"),
-              PluginTemplates.action(pkg, actionName))
-    appendServiceFile(root, "eu.webrobot.plugin.sdk.WAction",
-                      s"$pkg.${actionName}Action")
+    PluginHelpers.writeFile(srcDir.resolve(s"${actionName}Action.scala"),
+                            PluginTemplates.action(pkg, actionName))
+    PluginHelpers.appendServiceFile(root, "eu.webrobot.plugin.sdk.WAction",
+                                    s"$pkg.${actionName}Action")
 
     println(s"✓ Action '${actionName}Action' aggiunta in $srcDir")
     println("  ⚠  Il caricamento a caldo delle action richiede il riavvio dell'ETL.")
@@ -231,33 +231,39 @@ class PluginAddActionCommand extends Runnable {
 // Helpers condivisi
 // ──────────────────────────────────────────────────────────────────────────────
 
-private def detectPackage(root: Path): String = {
-  val build = root.resolve("build.gradle.kts")
-  if (Files.exists(build)) {
-    val lines = Source.fromFile(build.toFile).getLines().toSeq
-    lines.find(_.trim.startsWith("group")).flatMap { line =>
-      val m = """group\s*=\s*"([^"]+)"""".r.findFirstMatchIn(line)
-      m.map(_.group(1))
-    }.getOrElse("eu.webrobot.plugins.myplugin")
-  } else "eu.webrobot.plugins.myplugin"
-}
+private object PluginHelpers {
 
-private def writeFile(path: Path, content: String): Unit = {
-  Files.createDirectories(path.getParent)
-  val w = new PrintWriter(path.toFile)
-  try w.write(content) finally w.close()
-}
+  def detectPackage(root: Path): String = {
+    val build = root.resolve("build.gradle.kts")
+    if (Files.exists(build)) {
+      val lines = Source.fromFile(build.toFile).getLines().toSeq
+      lines.find(_.trim.startsWith("group")).flatMap { line =>
+        val m = """group\s*=\s*"([^"]+)"""".r.findFirstMatchIn(line)
+        m.map(_.group(1))
+      }.getOrElse("eu.webrobot.plugins.myplugin")
+    } else "eu.webrobot.plugins.myplugin"
+  }
 
-private def writeServiceFile(root: Path, iface: String, impls: Seq[String]): Unit = {
-  val f = root.resolve(s"src/main/resources/META-INF/services/$iface")
-  writeFile(f, impls.mkString("\n") + "\n")
-}
+  def writeFile(path: Path, content: String): Unit = {
+    Files.createDirectories(path.getParent)
+    val w = new PrintWriter(path.toFile)
+    try w.write(content) finally w.close()
+  }
 
-private def appendServiceFile(root: Path, iface: String, impl: String): Unit = {
-  val f = root.resolve(s"src/main/resources/META-INF/services/$iface")
-  Files.createDirectories(f.getParent)
-  val existing = if (Files.exists(f)) Files.readString(f) else ""
-  if (!existing.contains(impl)) Files.writeString(f, existing + impl + "\n")
+  def writeServiceFile(root: Path, iface: String, impls: Seq[String]): Unit = {
+    val f = root.resolve(s"src/main/resources/META-INF/services/$iface")
+    writeFile(f, impls.mkString("\n") + "\n")
+  }
+
+  def appendServiceFile(root: Path, iface: String, impl: String): Unit = {
+    val f = root.resolve(s"src/main/resources/META-INF/services/$iface")
+    Files.createDirectories(f.getParent)
+    val existing = if (Files.exists(f)) new String(Files.readAllBytes(f)) else ""
+    if (!existing.contains(impl)) {
+      val w = new PrintWriter(new java.io.FileWriter(f.toFile, true))
+      try w.write(impl + "\n") finally w.close()
+    }
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -396,7 +402,8 @@ private object PluginTemplates {
        |}
        |""".stripMargin
 
-  def resolver(pkg: String, name: String): String =
+  def resolver(pkg: String, name: String): String = {
+    val tq = "\"\"\""
     s"""package $pkg
        |
        |import eu.webrobot.plugin.sdk.WResolver
@@ -407,11 +414,12 @@ private object PluginTemplates {
        |
        |  // Riceve il testo dell'elemento HTML e restituisce il valore estratto, se presente
        |  override def extract(text: String): Option[String] = {
-       |    val pattern = """([0-9]+(?:[.,][0-9]{1,2})?)""".r
+       |    val pattern = ${tq}([0-9]+(?:[.,][0-9]{1,2})?)${tq}.r
        |    pattern.findFirstIn(text).map(_.replace(',', '.'))
        |  }
        |}
        |""".stripMargin
+  }
 
   def action(pkg: String, name: String): String =
     s"""package $pkg

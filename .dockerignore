@@ -1,0 +1,16 @@
+target/
+.idea/
+*.iml
+*.class
+*.log
+config.cfg
+dataset.csv
+input/
+docs/
+README*
+sonatype-settings*.xml
+scripts/
+k8s/
+WebRobotCli.sh
+PrepareDB.sh
+script.js

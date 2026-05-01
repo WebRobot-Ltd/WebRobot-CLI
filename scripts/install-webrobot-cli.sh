@@ -11,7 +11,7 @@
 # Opzionale:
 #   PREFIX                        default: $HOME/.local  (jar in PREFIX/share/webrobot-cli, bin in PREFIX/bin)
 #   WEBROBOT_JAVA                 se impostato, prova per primo questo eseguibile (path assoluto consigliato)
-#   WEBROBOT_AUTO_JRE             default: true — se true e non c’è una JVM idonea, scarica Eclipse Temurin JRE
+#   WEBROBOT_AUTO_JRE             default: true — se true e non c'è una JVM idonea, scarica Eclipse Temurin JRE
 #                                 sotto PREFIX/share/webrobot-cli/jre (senza sudo)
 #   WEBROBOT_JRE_FEATURE_VERSION  major Temurin da installare se serve (default: 17)
 #   WEBROBOT_JVM_MIN_MAJOR        versione major minima accettata (default: 8)
@@ -183,12 +183,6 @@ fi
 mkdir -p "$INSTALL_DIR" "$BIN_DIR"
 install -m0644 "$TMP" "$JAR_PATH"
 
-cat > "${BIN_DIR}/webrobot" <<EOF
-#!/usr/bin/env bash
-exec "${JAVA_ABS}" -jar "${JAR_PATH}" "\$@"
-EOF
-chmod 0755 "${BIN_DIR}/webrobot"
-
 trap - EXIT
 rm -f "$TMP"
 
@@ -223,6 +217,28 @@ pick_python() {
   return 1
 }
 
+ensure_pip() {
+  local py="$1"
+  # Verifica se pip funziona correttamente
+  if "$py" -m pip --version >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "  pip non funzionante, bootstrap con ensurepip..."
+  if "$py" -m ensurepip --upgrade >/dev/null 2>&1; then
+    "$py" -m pip install --upgrade pip >/dev/null 2>&1 || true
+    return 0
+  fi
+  echo "  ensurepip fallito, download get-pip.py..."
+  local getpip
+  getpip="$(mktemp /tmp/get-pip-XXXXXX.py)"
+  if curl -fsSL https://bootstrap.pypa.io/get-pip.py -o "$getpip"; then
+    "$py" "$getpip" --user >/dev/null 2>&1 && rm -f "$getpip" && return 0
+  fi
+  rm -f "$getpip"
+  echo "⚠ Impossibile bootstrappare pip per $py" >&2
+  return 1
+}
+
 install_browser_deps() {
   local py="$1"
   local pip_packages=(
@@ -235,6 +251,10 @@ install_browser_deps() {
 
   echo ""
   echo "▶ [Python] Installazione browser-use + camoufox (wizard probe)..."
+  if ! ensure_pip "$py"; then
+    echo "⚠ pip non disponibile per $py. Il wizard probe non sarà installato." >&2
+    return 0
+  fi
   if ! "$py" -m pip install --upgrade "${pip_packages[@]}"; then
     echo "⚠ Installazione pacchetti pip fallita. Il wizard probe non sarà disponibile." >&2
     echo "  Riprova manualmente: $py -m pip install browser-use 'camoufox[geoip]'" >&2
@@ -256,9 +276,35 @@ install_browser_deps() {
   fi
 }
 
+# Rileva Python prima di generare il wrapper, così WEBROBOT_PYTHON viene baked in.
 PYTHON_BIN=""
+if pick_python_result="$(pick_python 2>/dev/null)"; then
+  PYTHON_BIN="$pick_python_result"
+fi
+
+# ── Genera il wrapper con PYTHONUSERBASE e WEBROBOT_PYTHON baked in ───────────
+WRAPPER_PYUSERBASE=""
+if [[ -n "${PYTHONUSERBASE:-}" ]]; then
+  WRAPPER_PYUSERBASE="export PYTHONUSERBASE=\"${PYTHONUSERBASE}\""
+fi
+
+WRAPPER_PYTHON=""
+if [[ -n "$PYTHON_BIN" ]]; then
+  PYTHON_ABS="$(command -v "$PYTHON_BIN" 2>/dev/null || echo "$PYTHON_BIN")"
+  WRAPPER_PYTHON="export WEBROBOT_PYTHON=\"${PYTHON_ABS}\""
+fi
+
+cat > "${BIN_DIR}/webrobot" <<EOF
+#!/usr/bin/env bash
+${WRAPPER_PYUSERBASE}
+${WRAPPER_PYTHON}
+"${JAVA_ABS}" -jar "${JAR_PATH}" "\$@" 2> >(grep -v "^SLF4J:" >&2)
+EOF
+chmod 0755 "${BIN_DIR}/webrobot"
+
+# ── Installa dipendenze Python ────────────────────────────────────────────────
 if [[ "${WEBROBOT_INSTALL_BROWSER_DEPS}" == "true" ]] || [[ "${WEBROBOT_INSTALL_BROWSER_DEPS}" == "1" ]]; then
-  if PYTHON_BIN="$(pick_python 2>/dev/null)"; then
+  if [[ -n "$PYTHON_BIN" ]]; then
     install_browser_deps "$PYTHON_BIN"
   else
     echo ""

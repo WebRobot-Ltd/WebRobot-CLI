@@ -204,38 +204,39 @@ private object StageWizardHelper {
       detStages.map(fmtStage).mkString("\n")
 
     val systemPrompt =
-      """You are a WebRobot ETL pipeline expert. Suggest the BEST stage sequence for a web scraping pipeline.
-
-RULES (follow strictly):
-1. If the pipeline reads data (URLs, records, etc.) from a file or list, ALWAYS include load_csv with "${INPUT_CSV_PATH}" as the VERY FIRST stage before any navigation stage.
-2. ALWAYS include a NAVIGATION stage (visit, wget, join, etc.) to load the page or call the API — it is mandatory.
-3. For EXTRACTION steps, ALWAYS prefer AI-powered stages (iextract, intelligentExtract, etc.) over deterministic ones when content may vary. Include the deterministic alternative so the user can choose.
-4. For EACH stage, populate "args" with the actual parameter values the user should start from (e.g. "$url" for visit, "${INPUT_CSV_PATH}" for load_csv, "extract field as col" for iextract/extract).
-5. Return ONLY a valid JSON array of objects — no markdown, no explanation outside JSON.
-
-Response format:
-[
-  {
-    "stage": "best_stage_name",
-    "args": ["arg1_value", "arg2_value"],
-    "reason": "one-line explanation",
-    "alternatives": ["alt_stage"]
-  }
-]
-
-"args" must contain realistic default values (never empty strings).
-For iextract/intelligentExtract stages, "args" must be a single-element array with the extraction prompt already in "field desc as col_name, ..." format.
-Set "alternatives" to [] when no alternative is relevant.
-Use ONLY stage names from the catalog."""
+      "You are a WebRobot ETL pipeline expert. Suggest the BEST stage sequence for a web scraping pipeline.\n\n" +
+      "RULES (follow strictly):\n" +
+      "1. If the pipeline reads data (URLs, records, etc.) from a file or list, ALWAYS include load_csv with \"${INPUT_CSV_PATH}\" as the VERY FIRST stage before any navigation stage.\n" +
+      "2. ALWAYS include a NAVIGATION stage (visit, wget, join, etc.) to load the page or call the API — it is mandatory.\n" +
+      "3. For EXTRACTION steps, ALWAYS prefer AI-powered stages (iextract, intelligentExtract, etc.) over deterministic ones when content may vary. Include the deterministic alternative so the user can choose.\n" +
+      "4. For EACH stage, populate \"args\" with the actual parameter values the user should start from (e.g. \"$url\" for visit, \"${INPUT_CSV_PATH}\" for load_csv, \"extract field as col\" for iextract/extract).\n" +
+      "5. If a BROWSER USE ACTION HISTORY section is present, extract css_selector and xpath values from the action steps and use them as args for deterministic extractor stages (e.g. css_selector_extractor, xpath_extractor). List the deterministic selector-based stage as an alternative to the AI stage.\n" +
+      "6. Return ONLY a valid JSON array of objects — no markdown, no explanation outside JSON.\n\n" +
+      "Response format:\n" +
+      "[\n" +
+      "  {\n" +
+      "    \"stage\": \"best_stage_name\",\n" +
+      "    \"args\": [\"arg1_value\", \"arg2_value\"],\n" +
+      "    \"reason\": \"one-line explanation\",\n" +
+      "    \"alternatives\": [\"alt_stage\"]\n" +
+      "  }\n" +
+      "]\n\n" +
+      "\"args\" must contain realistic default values (never empty strings).\n" +
+      "For iextract/intelligentExtract stages, \"args\" must be a single-element array with the extraction prompt already in \"field desc as col_name, ...\" format.\n" +
+      "Set \"alternatives\" to [] when no alternative is relevant.\n" +
+      "Use ONLY stage names from the catalog."
 
     val probeSection = probeContext.map("\n\n---\n" + _ + "\n").getOrElse("")
     val userPrompt =
       "STAGE CATALOG:\n" + catalogSummary +
       probeSection +
       "\n\n---\nPIPELINE DESCRIPTION: " + description +
-      "\n\nSuggest the full stage sequence. Start with navigation. Prefer AI-powered extraction. " +
-      "If a BROWSER USE PAGE PROBE section is present, use the fields and suggested_extraction_prompt " +
-      "from it to fill iextract args with real field names. Provide alternatives where applicable."
+      "\n\nSuggest the full stage sequence. Start with navigation. Prefer AI-powered extraction.\n" +
+      "If a BROWSER USE PAGE PROBE section is present:\n" +
+      "- Use fields and suggested_extraction_prompt to fill iextract args with real field names and AS aliases.\n" +
+      "- Extract css_selector / xpath values from Action history steps and use them as args for deterministic extractor stages.\n" +
+      "- Where CSS selectors are specific and stable, list a deterministic extractor as an alternative to the AI stage.\n" +
+      "Provide alternatives where applicable."
 
     System.out.println(s"  ${ANSI_CYAN}Calling LLM for stage suggestions...${ANSI_RESET}")
     val raw = cmd.llmInfer(userPrompt, systemPrompt).getOrElse("")
@@ -407,6 +408,28 @@ private object BrowserUseProbe {
     "        except Exception as e:\n" +
     "            sys.stderr.write('[camoufox] ' + str(e) + ', using default browser\\n')\n" +
     "    return await Agent(task=task, llm=llm).run(max_steps=12)\n" +
+    "def extract_action_history(history):\n" +
+    "    steps = []\n" +
+    "    try:\n" +
+    "        results = history.action_results() if hasattr(history, 'action_results') and callable(history.action_results) else []\n" +
+    "        for i, ar in enumerate(results):\n" +
+    "            step = {'step': i + 1}\n" +
+    "            if hasattr(ar, 'action') and ar.action:\n" +
+    "                act = ar.action\n" +
+    "                step['action_type'] = type(act).__name__\n" +
+    "                step['action'] = str(act)[:200]\n" +
+    "                for attr in ('css_selector', 'xpath', 'selector', 'value', 'text', 'url'):\n" +
+    "                    v = getattr(act, attr, None)\n" +
+    "                    if v:\n" +
+    "                        step[attr] = str(v)[:200]\n" +
+    "            if hasattr(ar, 'extracted_content') and ar.extracted_content:\n" +
+    "                step['result'] = str(ar.extracted_content)[:300]\n" +
+    "            if hasattr(ar, 'error') and ar.error:\n" +
+    "                step['error'] = str(ar.error)[:200]\n" +
+    "            steps.append(step)\n" +
+    "    except Exception as ex:\n" +
+    "        steps.append({'step': 0, 'error': 'history extraction failed: ' + str(ex)})\n" +
+    "    return steps\n" +
     "async def probe(url, objective):\n" +
     "    try:\n" +
     "        llm = make_llm()\n" +
@@ -419,53 +442,55 @@ private object BrowserUseProbe {
     "    task = (\n" +
     "        'Navigate to ' + url + '.\\n'\n" +
     "        'Goal: ' + objective + '\\n\\n'\n" +
-    "        'Explore the page and return ONLY this JSON (no extra text):\\n'\n" +
+    "        'After completing the goal, return ONLY this JSON (no extra text):\\n'\n" +
     "        '{\"page_title\":\"...\",'\n" +
-    "        '\"fields\":[{\"name\":\"field\",\"description\":\"what it contains\",\"example_value\":\"...\",\"css_selector\":\"optional\"}],'\n" +
-    "        '\"actions_taken\":[\"...\"],'\n" +
+    "        '\"fields\":[{\"name\":\"field\",\"description\":\"what it contains\",\"example_value\":\"...\",\"css_selector\":\"css selector if found\"}],'\n" +
     "        '\"suggested_extraction_prompt\":\"price as price, title as title, \"}'\n" +
     "    )\n" +
     "    try:\n" +
     "        history = await run_agent(task, llm)\n" +
+    "        action_history = extract_action_history(history)\n" +
     "        last_msg = ''\n" +
     "        if hasattr(history, 'final_result') and callable(history.final_result):\n" +
     "            last_msg = history.final_result() or ''\n" +
     "        else:\n" +
     "            last_msg = str(history)\n" +
     "        m = re.search(r'\\{[\\s\\S]*\\}', last_msg)\n" +
+    "        parsed = None\n" +
     "        if m:\n" +
     "            try:\n" +
-    "                print(json.dumps(json.loads(m.group())))\n" +
-    "                return\n" +
+    "                parsed = json.loads(m.group())\n" +
     "            except Exception:\n" +
     "                pass\n" +
-    "        print(json.dumps({'summary': last_msg[:3000], 'actions_taken': [], 'fields': []}))\n" +
+    "        if parsed is None:\n" +
+    "            parsed = {'summary': last_msg[:2000], 'fields': []}\n" +
+    "        parsed['action_history'] = action_history\n" +
+    "        print(json.dumps(parsed))\n" +
     "    except Exception as e:\n" +
     "        print(json.dumps({'error': str(e)}))\n" +
     "asyncio.run(probe(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else 'explore the page'))\n"
 
-  def isAvailable: Boolean = try {
-    val proc = new ProcessBuilder("python3", "-c", "import browser_use; print('ok')")
-      .redirectErrorStream(true).start()
+  private val pythonBin: String =
+    Option(System.getenv("WEBROBOT_PYTHON")).filter(_.nonEmpty).getOrElse("python3")
+
+  private def runCheck(snippet: String): Boolean = try {
+    val pb = new ProcessBuilder(pythonBin, "-c", snippet).redirectErrorStream(true)
+    pb.environment().putAll(System.getenv())
+    val proc = pb.start()
     val out  = new String(proc.getInputStream.readAllBytes()).trim
     proc.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
     out.contains("ok")
   } catch { case _: Exception => false }
 
-  def isCamoufoxAvailable: Boolean = try {
-    val proc = new ProcessBuilder("python3", "-c", "import camoufox; print('ok')")
-      .redirectErrorStream(true).start()
-    val out  = new String(proc.getInputStream.readAllBytes()).trim
-    proc.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
-    out.contains("ok")
-  } catch { case _: Exception => false }
+  def isAvailable: Boolean         = runCheck("import browser_use; print('ok')")
+  def isCamoufoxAvailable: Boolean = runCheck("import camoufox; print('ok')")
 
   def run(url: String, objective: String, timeoutSecs: Int = 90)(implicit cmd: BaseSubCommand): Option[Map[String, Any]] = {
     import cmd._
     val scriptFile = java.io.File.createTempFile("wr_probe_", ".py")
     try {
       java.nio.file.Files.write(scriptFile.toPath, PROBE_SCRIPT.getBytes("UTF-8"))
-      val pb = new ProcessBuilder("python3", scriptFile.getAbsolutePath, url, objective)
+      val pb = new ProcessBuilder(pythonBin, scriptFile.getAbsolutePath, url, objective)
       pb.environment().putAll(System.getenv())
       val cfgValues = ConfigHelper.readValues()
       def injectKey(field: String, envVar: String): Unit = {
@@ -491,7 +516,10 @@ private object BrowserUseProbe {
       }
       import scala.collection.JavaConverters._
       val m = scala.collection.mutable.Map[String, Any]()
-      node.fields().asScala.foreach { e => m(e.getKey) = e.getValue.asText("") }
+      node.fields().asScala.foreach { e =>
+        val v = e.getValue
+        m(e.getKey) = if (v.isTextual) v.asText() else v.toString
+      }
       Some(m.toMap)
     } catch {
       case e: Exception =>
@@ -505,7 +533,6 @@ private object BrowserUseProbe {
     val sb = new StringBuilder()
     sb.append("=== BROWSER USE PAGE PROBE ===\n")
     result.get("page_title").foreach(t => sb.append(s"Page title: $t\n"))
-    result.get("actions_taken").foreach(a => sb.append(s"Actions taken: $a\n"))
     result.get("fields").foreach { f =>
       sb.append("Fields found on page:\n")
       try {
@@ -527,8 +554,63 @@ private object BrowserUseProbe {
       if (pStr.nonEmpty && pStr != "null")
         sb.append(s"Suggested iextract prompt: $pStr\n")
     }
-    result.get("summary").foreach(s => sb.append(s"Summary: ${s.toString.take(500)}\n"))
+    result.get("action_history").foreach { ah =>
+      sb.append("Action history (browser-use steps with selectors):\n")
+      try {
+        val arr = mapper.readTree(ah.toString)
+        if (arr.isArray) arr.elements().asScala.foreach { el =>
+          val stepN  = el.path("step").asInt(0)
+          val atype  = el.path("action_type").asText("")
+          val css    = el.path("css_selector").asText("")
+          val xpath  = el.path("xpath").asText("")
+          val found  = el.path("result").asText("")
+          val err    = el.path("error").asText("")
+          sb.append(s"  Step $stepN")
+          if (atype.nonEmpty) sb.append(s" [$atype]")
+          if (css.nonEmpty)   sb.append(s" css:$css")
+          else if (xpath.nonEmpty) sb.append(s" xpath:$xpath")
+          if (found.nonEmpty) sb.append(s" => ${found.take(120)}")
+          if (err.nonEmpty)   sb.append(s" ERR:${err.take(80)}")
+          sb.append("\n")
+        }
+      } catch { case _: Exception => sb.append(s"  $ah\n") }
+    }
+    result.get("summary").foreach(s => sb.append(s"Summary: ${s.toString.take(400)}\n"))
     sb.toString
+  }
+
+  def save(result: Map[String, Any], file: java.io.File): Unit = {
+    val mapper = new com.fasterxml.jackson.databind.ObjectMapper()
+    val node   = mapper.createObjectNode()
+    result.foreach { case (k, v) =>
+      val s = v.toString
+      try { node.set(k, mapper.readTree(s)) }
+      catch { case _: Exception => node.put(k, s) }
+    }
+    java.nio.file.Files.write(file.toPath, mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(node))
+  }
+
+  def load(file: java.io.File)(implicit cmd: BaseSubCommand): Option[Map[String, Any]] = {
+    import cmd._
+    try {
+      val mapper = new com.fasterxml.jackson.databind.ObjectMapper()
+      val node   = mapper.readTree(file)
+      if (node.has("error")) {
+        System.out.println(s"  ${ANSI_YELLOW}Probe file: ${node.path("error").asText()}${ANSI_RESET}")
+        return None
+      }
+      import scala.collection.JavaConverters._
+      val m = scala.collection.mutable.Map[String, Any]()
+      node.fields().asScala.foreach { e =>
+        val v = e.getValue
+        m(e.getKey) = if (v.isTextual) v.asText() else v.toString
+      }
+      Some(m.toMap)
+    } catch {
+      case e: Exception =>
+        System.out.println(s"  ${ANSI_RED}Errore caricamento probe: ${e.getMessage}${ANSI_RESET}")
+        None
+    }
   }
 }
 
@@ -861,6 +943,9 @@ trait PythonExtWizard { self: BaseSubCommand =>
 )
 class AgentWizardCommand extends BaseSubCommand with PythonExtWizard {
 
+  @Opt(names = Array("-P", "--probe"), description = Array("Probe context JSON salvato da 'wizard browser' (salta la fase di esplorazione)"))
+  private var probeFile: String = ""
+
   override def startRun(): Unit = {
     this.init()
     implicit val self: BaseSubCommand = this
@@ -926,32 +1011,57 @@ class AgentWizardCommand extends BaseSubCommand with PythonExtWizard {
 
         val collectedStages = ListBuffer[(String, List[String])]()
 
-        // Optional Browser Use probe step
+        // Browser Use exploration step (file salvato o esecuzione live)
         val probeContext: Option[String] = {
-          val probeAvail = BrowserUseProbe.isAvailable
-          val label =
-            if (!probeAvail) "Browser Use non rilevato. Installa con: webrobot browser install"
-            else if (BrowserUseProbe.isCamoufoxAvailable) "Browser Use disponibile (camoufox attivo — browser anti-detection via WebSocket locale)."
-            else "Browser Use disponibile (browser default Playwright). Per camoufox: webrobot browser install"
-          System.out.println(s"  ${ANSI_CYAN}$label${ANSI_RESET}")
-          if (probeAvail && WizardIO.confirm("Probe the target URL with Browser Use to discover fields and suggest stages?")) {
-            val targetUrl = WizardIO.prompt("Target URL to probe")
-            val probeGoal = WizardIO.prompt("Probe objective (e.g. 'extract product price and title')", "explore the page and identify key data fields")
-            if (targetUrl.nonEmpty) {
-              System.out.println(s"  ${ANSI_CYAN}Launching Browser Use probe (up to 90s)...${ANSI_RESET}")
-              BrowserUseProbe.run(targetUrl, probeGoal) match {
+          if (probeFile.nonEmpty) {
+            val f = new java.io.File(probeFile)
+            if (!f.exists()) {
+              System.out.println(s"  ${ANSI_YELLOW}File probe non trovato: $probeFile${ANSI_RESET}"); None
+            } else {
+              System.out.println(s"  ${ANSI_CYAN}Caricamento probe context da $probeFile...${ANSI_RESET}")
+              BrowserUseProbe.load(f) match {
                 case Some(result) =>
                   val summary = BrowserUseProbe.summarize(result)
-                  System.out.println(s"\n  ${ANSI_BOLD}Browser Use found:${ANSI_RESET}")
-                  summary.linesIterator.foreach(l => System.out.println("  " + l))
+                  System.out.println(s"\n  ${ANSI_BOLD}Probe context caricato:${ANSI_RESET}")
+                  summary.linesIterator.take(40).foreach(l => System.out.println("  " + l))
                   System.out.println()
                   Some(summary)
-                case None =>
-                  System.out.println(s"  ${ANSI_YELLOW}Probe returned no results — continuing without it.${ANSI_RESET}")
-                  None
+                case None => None
               }
+            }
+          } else {
+            val probeAvail = BrowserUseProbe.isAvailable
+            val status =
+              if (!probeAvail) ANSI_YELLOW + "non installato" + ANSI_RESET + " — pip install browser-use"
+              else if (BrowserUseProbe.isCamoufoxAvailable) ANSI_GREEN + "disponibile + camoufox" + ANSI_RESET + " (anti-detection)"
+              else ANSI_GREEN + "disponibile" + ANSI_RESET + " (Playwright)"
+            System.out.println(s"\n  Browser Use: $status")
+            if (probeAvail && WizardIO.confirm("Usa Browser Use per esplorare il sito target? (scopre selettori e campi)")) {
+              val targetUrl = WizardIO.prompt("URL target")
+              val taskDesc  = WizardIO.prompt(
+                "Cosa deve fare browser-use? (es. 'trova prezzo e titolo, nota i selettori CSS')",
+                "esplora la pagina e identifica i campi dati principali con i loro selettori CSS")
+              if (targetUrl.nonEmpty) {
+                System.out.println(s"  ${ANSI_CYAN}Browser Use in esecuzione (fino a 90s)...${ANSI_RESET}")
+                BrowserUseProbe.run(targetUrl, taskDesc) match {
+                  case Some(result) =>
+                    val summary = BrowserUseProbe.summarize(result)
+                    System.out.println(s"\n  ${ANSI_BOLD}Browser Use — risultati:${ANSI_RESET}")
+                    summary.linesIterator.take(50).foreach(l => System.out.println("  " + l))
+                    val saveProbe = WizardIO.prompt("\n  Salva probe context per riuso (lascia vuoto per non salvare)", "browser-probe.json")
+                    if (saveProbe.nonEmpty) {
+                      BrowserUseProbe.save(result, new java.io.File(saveProbe))
+                      System.out.println(s"  ${ANSI_GREEN}✓ Salvato: $saveProbe  (riusa con --probe $saveProbe)${ANSI_RESET}")
+                    }
+                    System.out.println()
+                    Some(summary)
+                  case None =>
+                    System.out.println(s"  ${ANSI_YELLOW}Nessun risultato — continuo senza browser-use.${ANSI_RESET}")
+                    None
+                }
+              } else None
             } else None
-          } else None
+          }
         }
 
         // LLM natural-language mode
@@ -1065,6 +1175,9 @@ class PipelineWizardCommand extends BaseSubCommand with DatasetWizard with Pytho
   @Opt(names = Array("-F", "--follow"), description = Array("Follow execution after start"))
   private var follow: Boolean = false
 
+  @Opt(names = Array("-P", "--probe"), description = Array("Probe context JSON salvato da 'wizard browser' (salta la fase di esplorazione)"))
+  private var probeFile: String = ""
+
   override def startRun(): Unit = {
     this.init()
     implicit val self: BaseSubCommand = this
@@ -1113,13 +1226,66 @@ class PipelineWizardCommand extends BaseSubCommand with DatasetWizard with Pytho
     WizardIO.header("Pipeline composition — Stages")
     System.out.println(s"  Available categories: ${ANSI_CYAN}${StageCatalog.categories.mkString(" | ")}${ANSI_RESET}")
 
+    // Browser Use exploration step (file salvato o esecuzione live)
+    val probeContext: Option[String] = {
+      if (probeFile.nonEmpty) {
+        val f = new java.io.File(probeFile)
+        if (!f.exists()) {
+          System.out.println(s"  ${ANSI_YELLOW}File probe non trovato: $probeFile${ANSI_RESET}"); None
+        } else {
+          System.out.println(s"  ${ANSI_CYAN}Caricamento probe context da $probeFile...${ANSI_RESET}")
+          BrowserUseProbe.load(f) match {
+            case Some(result) =>
+              val summary = BrowserUseProbe.summarize(result)
+              System.out.println(s"\n  ${ANSI_BOLD}Probe context caricato:${ANSI_RESET}")
+              summary.linesIterator.take(40).foreach(l => System.out.println("  " + l))
+              System.out.println()
+              Some(summary)
+            case None => None
+          }
+        }
+      } else {
+        val probeAvail = BrowserUseProbe.isAvailable
+        val status =
+          if (!probeAvail) ANSI_YELLOW + "non installato" + ANSI_RESET + " — pip install browser-use"
+          else if (BrowserUseProbe.isCamoufoxAvailable) ANSI_GREEN + "disponibile + camoufox" + ANSI_RESET + " (anti-detection)"
+          else ANSI_GREEN + "disponibile" + ANSI_RESET + " (Playwright)"
+        System.out.println(s"\n  Browser Use: $status")
+        if (probeAvail && WizardIO.confirm("Usa Browser Use per esplorare il sito target? (scopre selettori e campi)")) {
+          val targetUrl = WizardIO.prompt("URL target")
+          val taskDesc  = WizardIO.prompt(
+            "Cosa deve fare browser-use?",
+            "esplora la pagina e identifica i campi dati principali con i loro selettori CSS")
+          if (targetUrl.nonEmpty) {
+            System.out.println(s"  ${ANSI_CYAN}Browser Use in esecuzione (fino a 90s)...${ANSI_RESET}")
+            BrowserUseProbe.run(targetUrl, taskDesc) match {
+              case Some(result) =>
+                val summary = BrowserUseProbe.summarize(result)
+                System.out.println(s"\n  ${ANSI_BOLD}Browser Use — risultati:${ANSI_RESET}")
+                summary.linesIterator.take(50).foreach(l => System.out.println("  " + l))
+                val saveProbe = WizardIO.prompt("\n  Salva probe context per riuso (lascia vuoto per non salvare)", "browser-probe.json")
+                if (saveProbe.nonEmpty) {
+                  BrowserUseProbe.save(result, new java.io.File(saveProbe))
+                  System.out.println(s"  ${ANSI_GREEN}✓ Salvato: $saveProbe  (riusa con --probe $saveProbe)${ANSI_RESET}")
+                }
+                System.out.println()
+                Some(summary)
+              case None =>
+                System.out.println(s"  ${ANSI_YELLOW}Nessun risultato — continuo senza browser-use.${ANSI_RESET}")
+                None
+            }
+          } else None
+        } else None
+      }
+    }
+
     // LLM natural-language mode
     System.out.print(s"  Describe the pipeline in natural language (or Enter to add stages manually): ")
     System.out.flush()
     val nlDesc = Option(scala.io.StdIn.readLine()).map(_.trim).getOrElse("")
     var stageCount = 0
     if (nlDesc.nonEmpty) {
-      StageWizardHelper.suggestStagesFromDescription(nlDesc).foreach { entry =>
+      StageWizardHelper.suggestStagesFromDescription(nlDesc, probeContext).foreach { entry =>
         YamlManifest.addStage(pd, entry._1, if (entry._2.nonEmpty) Some(entry._2) else None, Map.empty, None,
           org.webrobot.cli.manifest.AtEnd)
         stageCount += 1
@@ -1441,6 +1607,64 @@ class PythonExtWizardCommand extends BaseSubCommand with DatasetWizard with Pyth
   }
 }
 
+// ─── browser use probe wizard ─────────────────────────────────────────────────
+
+@Command(
+  name = "browser",
+  sortOptions = false,
+  description = Array("Esplora un sito con Browser Use e salva il probe context (riusabile con --probe in wizard agent/pipeline).")
+)
+class BrowserWizardCommand extends BaseSubCommand {
+
+  @Opt(names = Array("-o", "--output"), description = Array("File JSON di output (default: browser-probe.json)"))
+  private var outputFile: String = "browser-probe.json"
+
+  override def startRun(): Unit = {
+    this.init()
+    implicit val self: BaseSubCommand = this
+
+    WizardIO.header("Wizard — Browser Use Probe")
+
+    val probeAvail = BrowserUseProbe.isAvailable
+    if (!probeAvail) {
+      System.out.println(s"  ${ANSI_RED}Browser Use non installato.${ANSI_RESET}")
+      System.out.println(s"  Installa con: pip install browser-use 'camoufox[geoip]'")
+      System.out.println(s"  Verifica stato: webrobot browser status")
+      return
+    }
+    val cfLabel =
+      if (BrowserUseProbe.isCamoufoxAvailable) ANSI_GREEN + "camoufox" + ANSI_RESET + " (anti-detection)"
+      else ANSI_YELLOW + "Playwright default" + ANSI_RESET + " — installa camoufox per anti-detection"
+    System.out.println(s"  Browser: $cfLabel\n")
+
+    val targetUrl = WizardIO.prompt("URL target")
+    if (targetUrl.isEmpty) { System.out.println("  Annullato."); return }
+    val taskDesc = WizardIO.prompt(
+      "Cosa deve fare browser-use? (es. 'trova prezzo e titolo, nota i selettori CSS')",
+      "esplora la pagina e identifica i campi dati principali con i loro selettori CSS")
+
+    System.out.println(s"\n  ${ANSI_CYAN}Browser Use in esecuzione (fino a 90s)...${ANSI_RESET}")
+    BrowserUseProbe.run(targetUrl, taskDesc) match {
+      case None =>
+        System.out.println(s"  ${ANSI_YELLOW}Nessun risultato.${ANSI_RESET}")
+      case Some(result) =>
+        val summary = BrowserUseProbe.summarize(result)
+        System.out.println(s"\n  ${ANSI_BOLD}Risultati:${ANSI_RESET}")
+        summary.linesIterator.foreach(l => System.out.println("  " + l))
+
+        val outPath = WizardIO.prompt("\n  Salva probe context in file", outputFile)
+        if (outPath.nonEmpty) {
+          val f = new java.io.File(outPath)
+          BrowserUseProbe.save(result, f)
+          System.out.println(s"\n  ${ANSI_GREEN}✓ Salvato: ${f.getPath}${ANSI_RESET}")
+          System.out.println(s"\n  Riusa in:")
+          System.out.println(s"  ${ANSI_CYAN}webrobot wizard agent   --probe ${f.getName}${ANSI_RESET}")
+          System.out.println(s"  ${ANSI_CYAN}webrobot wizard pipeline --probe ${f.getName}${ANSI_RESET}")
+        }
+    }
+  }
+}
+
 // ─── wizard (gruppo) ──────────────────────────────────────────────────────────
 
 @Command(
@@ -1451,15 +1675,18 @@ class PythonExtWizardCommand extends BaseSubCommand with DatasetWizard with Pyth
   footer = Array(
     "",
     "Examples:",
+    "  webrobot wizard browser           -- esplora sito con Browser Use e salva probe context",
     "  webrobot wizard agent             -- create an agent with stage composer + inline extensions",
+    "  webrobot wizard agent --probe browser-probe.json  -- agent wizard con probe context precaricato",
     "  webrobot wizard pipeline          -- create pipeline + extensions + dataset + run",
+    "  webrobot wizard pipeline --probe browser-probe.json --follow",
     "  webrobot wizard job               -- create job + input dataset + run",
     "  webrobot wizard dataset           -- create/upload dataset guided by agent",
     "  webrobot wizard python-ext        -- register Python Extension in an agent (Mode B)",
-    "  webrobot wizard pipeline -f my.yaml --follow",
     ""
   ),
   subcommands = Array(
+    classOf[BrowserWizardCommand],
     classOf[AgentWizardCommand],
     classOf[PipelineWizardCommand],
     classOf[JobWizardCommand],
@@ -1468,5 +1695,5 @@ class PythonExtWizardCommand extends BaseSubCommand with DatasetWizard with Pyth
   )
 )
 class RunWizardCommand extends Runnable {
-  def run(): Unit = System.err.println("Usage: webrobot wizard <agent|pipeline|job|dataset|python-ext>")
+  def run(): Unit = System.err.println("Usage: webrobot wizard <browser|agent|pipeline|job|dataset|python-ext>")
 }
