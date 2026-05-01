@@ -99,7 +99,7 @@ class RunConfigShowCommand extends Runnable {
         ConfigHelper.maskValue(raw)
       }
       System.out.println(
-        f"  ${ANSI_CYAN}%-16s${ANSI_RESET}  %-20s  %s".format(alias, masked, label)
+        "  " + ANSI_CYAN + "%-16s".format(alias) + ANSI_RESET + "  " + "%-20s".format(masked) + "  " + label
       )
     }
     System.out.println()
