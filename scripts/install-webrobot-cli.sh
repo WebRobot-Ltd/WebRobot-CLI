@@ -185,7 +185,7 @@ install -m0644 "$TMP" "$JAR_PATH"
 
 cat > "${BIN_DIR}/webrobot" <<EOF
 #!/usr/bin/env bash
-exec "${JAVA_ABS}" -jar "${JAR_PATH}" webrobot "\$@"
+exec "${JAVA_ABS}" -jar "${JAR_PATH}" "\$@"
 EOF
 chmod 0755 "${BIN_DIR}/webrobot"
 

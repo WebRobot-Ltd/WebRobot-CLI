@@ -104,11 +104,11 @@ class RunBrowserStatusCommand extends Runnable {
     System.out.println()
 
     checkCmd(  "python3",            "python3 --version")
-    checkPkg(  "browser-use",        "browser_use",        "browser_use.__version__")
-    checkPkg(  "camoufox",           "camoufox",           "camoufox.__version__")
-    checkPkg(  "langchain-anthropic","langchain_anthropic", "langchain_anthropic.__version__")
-    checkPkg(  "langchain-openai",   "langchain_openai",   "langchain_openai.__version__")
-    checkPkg(  "langchain-groq",     "langchain_groq",     "langchain_groq.__version__")
+    checkPkg(  "browser-use",        "browser-use")
+    checkPkg(  "camoufox",           "camoufox")
+    checkPkg(  "langchain-anthropic","langchain-anthropic")
+    checkPkg(  "langchain-openai",   "langchain-openai")
+    checkPkg(  "langchain-groq",     "langchain-groq")
     checkBinary()
 
     System.out.println()
@@ -131,8 +131,8 @@ class RunBrowserStatusCommand extends Runnable {
     System.out.println(s"  $icon  $label$info")
   }
 
-  private def checkPkg(label: String, module: String, versionExpr: String): Unit = {
-    val script = "import " + module + "; print(" + versionExpr + ")"
+  private def checkPkg(label: String, pipName: String): Unit = {
+    val script = "import importlib.metadata; print(importlib.metadata.version('" + pipName + "'))"
     val (code, out) = run1(Seq("python3", "-c", script))
     val ok   = code == 0 && out.nonEmpty && !out.startsWith("Traceback")
     val icon = if (ok) ANSI_GREEN + "✓" + ANSI_RESET else ANSI_RED + "✗" + ANSI_RESET
@@ -141,19 +141,14 @@ class RunBrowserStatusCommand extends Runnable {
   }
 
   private def checkBinary(): Unit = {
-    // Check if camoufox binary is fetched by attempting a dry import of its path resolver
     val script =
-      "import camoufox, os\n" +
-      "try:\n" +
-      "    from camoufox._utils import get_path\n" +
-      "    p = get_path('camoufox')\n" +
-      "    print('ok' if os.path.exists(p) else 'fetch')\n" +
-      "except Exception:\n" +
-      "    print('fetch')\n"
+      "from camoufox.pkgman import camoufox_path; import os\n" +
+      "p = camoufox_path()\n" +
+      "print('ok' if os.path.exists(p) else 'fetch')\n"
     val (code, out) = run1(Seq("python3", "-c", script))
     val ok   = code == 0 && out.trim == "ok"
     val icon = if (ok) ANSI_GREEN + "✓" + ANSI_RESET else ANSI_YELLOW + "⚠" + ANSI_RESET
-    val info = if (ok) "  binario pronto (WebSocket locale attivo alla prima esecuzione)"
+    val info = if (ok) "  binario pronto"
                else    "  binario mancante — esegui: python3 -m camoufox fetch"
     System.out.println(s"  $icon  camoufox-binary$info")
   }
