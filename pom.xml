@@ -5,7 +5,7 @@
     <!-- Versione CI-friendly: Jenkins passa -Drevision=… (default 0.3.<BUILD_NUMBER>). Locale: default SNAPSHOT. -->
     <version>${revision}</version>
     <modelVersion>4.0.0</modelVersion>
-    <artifactId>org.webrobot.eu.spark.job</artifactId>
+    <artifactId>webrobot-cli</artifactId>
     <groupId>webrobot.eu</groupId>
     <packaging>jar</packaging>
     <properties>

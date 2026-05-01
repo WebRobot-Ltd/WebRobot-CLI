@@ -1,7 +1,7 @@
 /**
  * WebRobot CLI (Picocli) — stesso modello Kubernetes/Maven di WebRobot.Sdk:
  * withMaven + managed settings (Sonatype: server id ossrh per deploy; SDK da Maven Central).
- * Artefatto: target/org.webrobot.eu.spark.job-*-uber.jar (shade).
+ * Artefatto: target/webrobot-cli-*-uber.jar (shade).
  *
  * Versione CLI (${revision}): default CI 0.3.<BUILD_NUMBER> (nuova GAV ad ogni build).
  * Dipendenza SDK: param WEBROBOT_SDK_MAVEN_VERSION (versione su Maven Central).
@@ -50,7 +50,7 @@ spec:
         // Managed Maven settings (mirror/proxy); segreti Sonatype via credential SONATYPE_CREDENTIALS_ID nello stage deploy.
         MAVEN_CREDENTIALS = 'github-token'
         MAVEN_SETTINGS_CONFIG = '603a9990-8a95-4328-84f2-693f1c72212f'
-        UBER_JAR_GLOB = 'target/org.webrobot.eu.spark.job-*-uber.jar'
+        UBER_JAR_GLOB = 'target/webrobot-cli-*-uber.jar'
     }
 
     parameters {
@@ -145,7 +145,7 @@ spec:
                         if (params.COPY_STABLE_NAME) {
                             sh '''
                                 set -e
-                                UBER=$(ls target/org.webrobot.eu.spark.job-*-uber.jar | head -1)
+                                UBER=$(ls target/webrobot-cli-*-uber.jar | head -1)
                                 test -n "$UBER"
                                 cp -f "$UBER" target/webrobot-cli-uber.jar
                                 ls -la target/webrobot-cli-uber.jar
@@ -208,7 +208,7 @@ spec:
             steps {
                 container('maven') {
                     script {
-                        archiveArtifacts artifacts: 'target/org.webrobot.eu.spark.job-*-uber.jar', fingerprint: true, allowEmptyArchive: false
+                        archiveArtifacts artifacts: 'target/webrobot-cli-*-uber.jar', fingerprint: true, allowEmptyArchive: false
                         if (params.COPY_STABLE_NAME) {
                             archiveArtifacts artifacts: 'target/webrobot-cli-uber.jar', fingerprint: true, allowEmptyArchive: false
                         }
