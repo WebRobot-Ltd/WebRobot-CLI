@@ -145,17 +145,58 @@ private object StageWizardHelper {
    */
   def suggestStagesFromDescription(description: String)(implicit cmd: BaseSubCommand): List[(String, List[String])] = {
     import cmd._
-    val allStages = StageCatalog.list()
-    val catalogSummary = allStages.map { s =>
-      val n = s.getOrElse("name", "").toString
-      val d = s.getOrElse("description", "").toString.take(60)
-      s"$n: $d"
-    }.mkString("\n")
+    import scala.collection.JavaConverters._
 
-    val systemPrompt = "You are a WebRobot ETL pipeline assistant. Return ONLY a valid JSON array of stage names, nothing else. No markdown, no explanation."
-    val userPrompt = "Available stages:\n" + catalogSummary +
-      "\n\nUser pipeline description: " + description +
-      "\n\nReturn a JSON array of stage names (from the list above) that best implement this pipeline. Example: [\"web_scrape_url\",\"html_extract_field\",\"csv_write\"]"
+    val allStages = StageCatalog.list()
+    val mapper    = new com.fasterxml.jackson.databind.ObjectMapper()
+
+    // Build catalog grouped: AI-powered stages flagged explicitly
+    val aiKeywords = Set("iextract", "llm", "ai_", "_ai", "gpt", "inference", "smart", "intelligent")
+    def isAi(name: String, desc: String): Boolean =
+      aiKeywords.exists(k => name.contains(k) || desc.toLowerCase.contains(k))
+
+    val (aiStages, detStages) = allStages.partition { s =>
+      val n = s.getOrElse("name", "").toString
+      val d = s.getOrElse("description", "").toString
+      isAi(n, d)
+    }
+
+    def fmtStage(s: Map[String, Any]): String = {
+      val n = s.getOrElse("name", "").toString
+      val d = s.getOrElse("description", "").toString.take(120)
+      s"  $n — $d"
+    }
+
+    val catalogSummary =
+      "=== AI-POWERED STAGES (prefer these when quality/robustness matters) ===\n" +
+      (if (aiStages.isEmpty) "  (none)\n" else aiStages.map(fmtStage).mkString("\n") + "\n") +
+      "\n=== DETERMINISTIC STAGES (use when precision/structure is guaranteed) ===\n" +
+      detStages.map(fmtStage).mkString("\n")
+
+    val systemPrompt =
+      """You are a WebRobot ETL pipeline expert. Your job is to suggest the BEST sequence of stages for a web scraping pipeline.
+
+IMPORTANT RULES:
+1. ALWAYS prefer AI-powered stages (iextract, llm_*, etc.) over deterministic ones when the task involves understanding content, extracting semantically variable fields, or handling inconsistent page structures.
+2. For each stage where an AI-powered alternative exists, include BOTH options so the user can choose.
+3. Return ONLY a valid JSON array of objects. No markdown, no explanation outside the JSON.
+
+Response format:
+[
+  {
+    "stage": "recommended_stage_name",
+    "reason": "one-line explanation of why this stage",
+    "alternatives": ["alt_stage_1"]
+  }
+]
+
+If no AI alternative exists, set "alternatives" to [].
+Only use stage names from the provided catalog."""
+
+    val userPrompt =
+      "STAGE CATALOG:\n" + catalogSummary +
+      "\n\n---\nPIPELINE DESCRIPTION: " + description +
+      "\n\nSuggest the best stage sequence. Prefer AI-powered stages. Include alternatives where relevant."
 
     System.out.println(s"  ${ANSI_CYAN}Chiamata LLM per suggerire stage...${ANSI_RESET}")
     val raw = cmd.llmInfer(userPrompt, systemPrompt).getOrElse("")
@@ -164,49 +205,73 @@ private object StageWizardHelper {
       return List.empty
     }
 
-    // Parse JSON array from response (robust: find first '[' ... ']')
+    // Parse JSON array (robust: find first '[' ... ']')
     val start = raw.indexOf('[')
     val end   = raw.lastIndexOf(']')
     if (start < 0 || end < 0 || end <= start) {
       System.out.println(s"  ${ANSI_YELLOW}Risposta LLM non parsificabile: $raw${ANSI_RESET}")
       return List.empty
     }
-    val jsonArr = raw.substring(start, end + 1)
-    val names = try {
-      import scala.collection.JavaConverters._
-      val node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(jsonArr)
-      if (!node.isArray) List.empty[String]
-      else node.elements().asScala.map(_.asText("")).filter(_.nonEmpty).toList
-    } catch { case _: Exception => List.empty[String] }
 
-    if (names.isEmpty) {
+    // Each element: { stage, reason, alternatives[] }
+    case class Suggestion(stage: String, reason: String, alternatives: List[String])
+    val suggestions: List[Suggestion] = try {
+      val node = mapper.readTree(raw.substring(start, end + 1))
+      if (!node.isArray) List.empty
+      else node.elements().asScala.flatMap { el =>
+        val stage = el.path("stage").asText("").trim
+        if (stage.isEmpty) None
+        else Some(Suggestion(
+          stage        = stage,
+          reason       = el.path("reason").asText(""),
+          alternatives = if (el.path("alternatives").isArray)
+            el.path("alternatives").elements().asScala.map(_.asText("")).filter(_.nonEmpty).toList
+          else List.empty
+        ))
+      }.toList
+    } catch { case _: Exception => List.empty }
+
+    if (suggestions.isEmpty) {
       System.out.println(s"  ${ANSI_YELLOW}LLM non ha restituito stage validi.${ANSI_RESET}")
       return List.empty
     }
 
-    System.out.println(s"\n  ${ANSI_BOLD}Stage suggeriti dall'LLM:${ANSI_RESET}")
-    names.zipWithIndex.foreach { case (n, i) =>
-      val exists = StageCatalog.exists(n)
-      val mark   = if (exists) s"${ANSI_GREEN}✓${ANSI_RESET}" else s"${ANSI_YELLOW}?${ANSI_RESET}"
-      System.out.println(s"  [$mark] [${i + 1}] ${ANSI_CYAN}$n${ANSI_RESET}")
+    System.out.println(s"\n  ${ANSI_BOLD}Stage suggeriti dall'LLM:${ANSI_RESET}\n")
+    suggestions.zipWithIndex.foreach { case (s, i) =>
+      val aiMark = if (isAi(s.stage, "")) s" ${ANSI_CYAN}[AI]${ANSI_RESET}" else ""
+      System.out.println(s"  [${i + 1}] ${ANSI_BOLD}${s.stage}${ANSI_RESET}$aiMark")
+      if (s.reason.nonEmpty)
+        System.out.println(s"      ${ANSI_YELLOW}→ ${s.reason}${ANSI_RESET}")
+      if (s.alternatives.nonEmpty)
+        System.out.println(s"      Alternativa: ${s.alternatives.map(a => s"${ANSI_CYAN}$a${ANSI_RESET}").mkString(", ")}")
+      System.out.println()
     }
-    System.out.println()
 
     val collected = new scala.collection.mutable.ListBuffer[(String, List[String])]()
-    names.foreach { name =>
-      System.out.print(s"  Includere stage ${ANSI_CYAN}$name${ANSI_RESET}? [Y/n]: ")
-      System.out.flush()
-      val ans = Option(scala.io.StdIn.readLine()).map(_.trim).getOrElse("")
-      if (ans.isEmpty || ans.equalsIgnoreCase("y")) {
-        val resolved = if (StageCatalog.exists(name)) name else {
-          val m = StageCatalog.list(search = Some(name))
-          if (m.size == 1) m.head.getOrElse("name", name).toString else name
+    suggestions.foreach { sug =>
+      val allOptions = sug.stage :: sug.alternatives
+      if (allOptions.size == 1) {
+        // No alternatives — simple Y/n
+        System.out.print(s"  Includere ${ANSI_CYAN}${sug.stage}${ANSI_RESET}? [Y/n]: ")
+        System.out.flush()
+        val ans = Option(scala.io.StdIn.readLine()).map(_.trim).getOrElse("")
+        if (ans.isEmpty || ans.equalsIgnoreCase("y"))
+          collectStageArgs(sug.stage).foreach { e => collected += e; System.out.println(s"  ${ANSI_GREEN}✓ '${e._1}' aggiunto.${ANSI_RESET}\n") }
+      } else {
+        // Show choice between primary and alternatives
+        System.out.println(s"  Stage per questo step:")
+        allOptions.zipWithIndex.foreach { case (o, i) =>
+          val aiMark = if (isAi(o, "")) s" ${ANSI_CYAN}[AI]${ANSI_RESET}" else ""
+          System.out.println(s"    [${i + 1}] ${ANSI_CYAN}$o${ANSI_RESET}$aiMark")
         }
-        collectStageArgs(resolved) match {
-          case Some(entry) =>
-            collected += entry
-            System.out.println(s"  ${ANSI_GREEN}✓ Stage '${entry._1}' aggiunto.${ANSI_RESET}\n")
-          case None =>
+        System.out.println(s"    [0] Salta")
+        System.out.print(s"  Scelta [1]: ")
+        System.out.flush()
+        val ans = Option(scala.io.StdIn.readLine()).map(_.trim).getOrElse("1")
+        val idx = try ans.toInt catch { case _: Exception => 1 }
+        if (idx >= 1 && idx <= allOptions.size) {
+          val chosen = allOptions(idx - 1)
+          collectStageArgs(chosen).foreach { e => collected += e; System.out.println(s"  ${ANSI_GREEN}✓ '${e._1}' aggiunto.${ANSI_RESET}\n") }
         }
       }
     }
