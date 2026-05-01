@@ -52,7 +52,7 @@ import org.webrobot.cli.commands.{
     "  Plugin factory:    plugin new | plugin add stage | plugin add resolver | plugin add action",
     "  Pacchetti:         package",
     "  Configurazione:    config show | config set | config init",
-    "  Browser locale:    browser install | browser status",
+    "  Browser locale:    browser status",
     "",
     "Esempi rapidi:",
     "  webrobot project list",
