@@ -371,43 +371,62 @@ Use ONLY stage names from the catalog."""
 
 private object BrowserUseProbe {
 
-  private val PROBE_SCRIPT = "import asyncio, json, sys, os, re\n" +
+  private val PROBE_SCRIPT =
+    "import asyncio, json, sys, os, re\n" +
     "try:\n" +
     "    from browser_use import Agent\n" +
     "except ImportError as e:\n" +
     "    print(json.dumps({'error': 'browser_use not installed: ' + str(e)}))\n" +
     "    sys.exit(0)\n" +
-    "\n" +
+    "CAMOUFOX_OK = False\n" +
+    "try:\n" +
+    "    import camoufox\n" +
+    "    CAMOUFOX_OK = True\n" +
+    "except ImportError:\n" +
+    "    pass\n" +
+    "def make_llm():\n" +
+    "    if os.environ.get('ANTHROPIC_API_KEY'):\n" +
+    "        from langchain_anthropic import ChatAnthropic\n" +
+    "        return ChatAnthropic(model_name='claude-haiku-4-5-20251001', timeout=60, stop=None)\n" +
+    "    if os.environ.get('OPENAI_API_KEY'):\n" +
+    "        from langchain_openai import ChatOpenAI\n" +
+    "        return ChatOpenAI(model='gpt-4o-mini')\n" +
+    "    if os.environ.get('GROQ_API_KEY'):\n" +
+    "        from langchain_groq import ChatGroq\n" +
+    "        return ChatGroq(model='llama-3.3-70b-versatile')\n" +
+    "    return None\n" +
+    "async def run_agent(task, llm):\n" +
+    "    if CAMOUFOX_OK:\n" +
+    "        try:\n" +
+    "            from camoufox.async_api import AsyncCamoufox\n" +
+    "            from browser_use.browser.browser import Browser, BrowserConfig\n" +
+    "            async with AsyncCamoufox(headless=True) as cf:\n" +
+    "                b = Browser(config=BrowserConfig())\n" +
+    "                b._playwright_browser = cf\n" +
+    "                return await Agent(task=task, llm=llm, browser=b).run(max_steps=12)\n" +
+    "        except Exception as e:\n" +
+    "            sys.stderr.write('[camoufox] ' + str(e) + ', using default browser\\n')\n" +
+    "    return await Agent(task=task, llm=llm).run(max_steps=12)\n" +
     "async def probe(url, objective):\n" +
-    "    llm = None\n" +
     "    try:\n" +
-    "        if os.environ.get('ANTHROPIC_API_KEY'):\n" +
-    "            from langchain_anthropic import ChatAnthropic\n" +
-    "            llm = ChatAnthropic(model_name='claude-haiku-4-5-20251001', timeout=60, stop=None)\n" +
-    "        elif os.environ.get('OPENAI_API_KEY'):\n" +
-    "            from langchain_openai import ChatOpenAI\n" +
-    "            llm = ChatOpenAI(model='gpt-4o-mini')\n" +
-    "        elif os.environ.get('GROQ_API_KEY'):\n" +
-    "            from langchain_groq import ChatGroq\n" +
-    "            llm = ChatGroq(model='llama-3.3-70b-versatile')\n" +
-    "        else:\n" +
-    "            print(json.dumps({'error': 'No LLM key (set ANTHROPIC_API_KEY, OPENAI_API_KEY or GROQ_API_KEY)'}))\n" +
-    "            return\n" +
+    "        llm = make_llm()\n" +
     "    except ImportError as e:\n" +
     "        print(json.dumps({'error': 'LLM provider not installed: ' + str(e)}))\n" +
+    "        return\n" +
+    "    if llm is None:\n" +
+    "        print(json.dumps({'error': 'No LLM key (set ANTHROPIC_API_KEY, OPENAI_API_KEY or GROQ_API_KEY)'}))\n" +
     "        return\n" +
     "    task = (\n" +
     "        'Navigate to ' + url + '.\\n'\n" +
     "        'Goal: ' + objective + '\\n\\n'\n" +
-    "        'Explore the page and return ONLY this JSON object (no extra text):\\n'\n" +
-    "        '{\"page_title\": \"...\",'\n" +
-    "        ' \"fields\": [{\"name\": \"field\", \"description\": \"what it contains\", \"example_value\": \"...\", \"css_selector\": \"optional\"}],'\n" +
-    "        ' \"actions_taken\": [\"list of actions\"],'\n" +
-    "        ' \"suggested_extraction_prompt\": \"price as price, title as title, ...\"}'\n" +
+    "        'Explore the page and return ONLY this JSON (no extra text):\\n'\n" +
+    "        '{\"page_title\":\"...\",'\n" +
+    "        '\"fields\":[{\"name\":\"field\",\"description\":\"what it contains\",\"example_value\":\"...\",\"css_selector\":\"optional\"}],'\n" +
+    "        '\"actions_taken\":[\"...\"],'\n" +
+    "        '\"suggested_extraction_prompt\":\"price as price, title as title, \"}'\n" +
     "    )\n" +
     "    try:\n" +
-    "        agent = Agent(task=task, llm=llm)\n" +
-    "        history = await agent.run(max_steps=12)\n" +
+    "        history = await run_agent(task, llm)\n" +
     "        last_msg = ''\n" +
     "        if hasattr(history, 'final_result') and callable(history.final_result):\n" +
     "            last_msg = history.final_result() or ''\n" +
@@ -423,11 +442,18 @@ private object BrowserUseProbe {
     "        print(json.dumps({'summary': last_msg[:3000], 'actions_taken': [], 'fields': []}))\n" +
     "    except Exception as e:\n" +
     "        print(json.dumps({'error': str(e)}))\n" +
-    "\n" +
     "asyncio.run(probe(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else 'explore the page'))\n"
 
   def isAvailable: Boolean = try {
     val proc = new ProcessBuilder("python3", "-c", "import browser_use; print('ok')")
+      .redirectErrorStream(true).start()
+    val out  = new String(proc.getInputStream.readAllBytes()).trim
+    proc.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
+    out.contains("ok")
+  } catch { case _: Exception => false }
+
+  def isCamoufoxAvailable: Boolean = try {
+    val proc = new ProcessBuilder("python3", "-c", "import camoufox; print('ok')")
       .redirectErrorStream(true).start()
     val out  = new String(proc.getInputStream.readAllBytes()).trim
     proc.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
@@ -903,7 +929,10 @@ class AgentWizardCommand extends BaseSubCommand with PythonExtWizard {
         // Optional Browser Use probe step
         val probeContext: Option[String] = {
           val probeAvail = BrowserUseProbe.isAvailable
-          val label = if (probeAvail) "Browser Use is available." else "Browser Use not detected (install with: pip install browser-use)."
+          val label =
+            if (!probeAvail) "Browser Use non rilevato. Installa con: webrobot browser install"
+            else if (BrowserUseProbe.isCamoufoxAvailable) "Browser Use disponibile (camoufox attivo — browser anti-detection via WebSocket locale)."
+            else "Browser Use disponibile (browser default Playwright). Per camoufox: webrobot browser install"
           System.out.println(s"  ${ANSI_CYAN}$label${ANSI_RESET}")
           if (probeAvail && WizardIO.confirm("Probe the target URL with Browser Use to discover fields and suggest stages?")) {
             val targetUrl = WizardIO.prompt("Target URL to probe")

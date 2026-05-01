@@ -7,6 +7,7 @@ import org.webrobot.cli.commands.{
   RunAiProvidersCommand,
   RunAuthCommand,
   RunBillingCommand,
+  RunBrowserCommand,
   RunCategoryCommand,
   RunCloudCommand,
   RunCloudCredentialsCommand,
@@ -51,6 +52,7 @@ import org.webrobot.cli.commands.{
     "  Plugin factory:    plugin new | plugin add stage | plugin add resolver | plugin add action",
     "  Pacchetti:         package",
     "  Configurazione:    config show | config set | config init",
+    "  Browser locale:    browser install | browser status",
     "",
     "Esempi rapidi:",
     "  webrobot project list",
@@ -98,7 +100,9 @@ import org.webrobot.cli.commands.{
     // Plugin factory
     classOf[RunPluginCommand],
     // Config
-    classOf[RunConfigCommand]
+    classOf[RunConfigCommand],
+    // Browser locale (browser-use + camoufox)
+    classOf[RunBrowserCommand]
   )
 )
 class WebRobotCliCommand extends Runnable {
