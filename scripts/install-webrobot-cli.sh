@@ -31,7 +31,19 @@ usage() {
 
 case "${1:-}" in -h|--help|help) usage ;; esac
 
-: "${WEBROBOT_CLI_JAR_URL:?Imposta WEBROBOT_CLI_JAR_URL con URL del jar uber (vedi --help)}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCAL_JAR="$(ls "${SCRIPT_DIR}/../target/webrobot-cli-"*"-uber.jar" 2>/dev/null | tail -1)"
+WEBROBOT_CLI_JAR_URL="${WEBROBOT_CLI_JAR_URL:-}"
+if [[ -z "$WEBROBOT_CLI_JAR_URL" ]]; then
+  if [[ -n "$LOCAL_JAR" && -f "$LOCAL_JAR" ]]; then
+    echo "WEBROBOT_CLI_JAR_URL non impostato — uso JAR locale: $LOCAL_JAR"
+    WEBROBOT_CLI_JAR_URL="file://${LOCAL_JAR}"
+  else
+    echo "Errore: WEBROBOT_CLI_JAR_URL non impostato e nessun JAR locale trovato in target/." >&2
+    echo "Compila prima con Maven oppure imposta WEBROBOT_CLI_JAR_URL." >&2
+    exit 1
+  fi
+fi
 
 PREFIX="${PREFIX:-$HOME/.local}"
 INSTALL_DIR="${PREFIX}/share/webrobot-cli"
@@ -162,7 +174,11 @@ cleanup_tmp() { rm -f "${TMP}"; }
 trap cleanup_tmp EXIT
 
 echo "Download CLI: $WEBROBOT_CLI_JAR_URL"
-curl -fsSL "$WEBROBOT_CLI_JAR_URL" -o "$TMP"
+if [[ "$WEBROBOT_CLI_JAR_URL" == file://* ]]; then
+  cp "${WEBROBOT_CLI_JAR_URL#file://}" "$TMP"
+else
+  curl -fsSL "$WEBROBOT_CLI_JAR_URL" -o "$TMP"
+fi
 
 mkdir -p "$INSTALL_DIR" "$BIN_DIR"
 install -m0644 "$TMP" "$JAR_PATH"
