@@ -32,7 +32,8 @@ object RunWebRobotCli extends App {
     ConfigFactory.load(root).getConfig("webrobot.api.gateway").getConfig("credentials")
   }
 
-  private def buildPluginContext(creds: Config): eu.webrobot.cli.sdk.WebroCliContext = {
+  private def buildPluginContext(creds: Config,
+                                  output: ConsoleOutputFormatter): eu.webrobot.cli.sdk.WebroCliContext = {
     val endpoint = if (creds.hasPath("api_endpoint")) creds.getString("api_endpoint") else "https://api.webrobot.eu"
     val apiKey   = if (creds.hasPath("apikey"))       creds.getString("apikey")       else ""
     val jwt      = if (creds.hasPath("jwt"))          creds.getString("jwt")          else ""
@@ -50,16 +51,27 @@ object RunWebRobotCli extends App {
     val cliConfig = new CliConfigFromMap(
       configMap,
       if (resolvedConfigFile != null) resolvedConfigFile.toPath else Paths.get(""))
-    val output    = new ConsoleOutputFormatter(System.out, "table")
     val identity  = StaticOrgIdentity.unresolved // TODO: derive from /auth/me when JWT is set
 
     CliContext.build(apiClient, cliConfig, identity, output)
   }
 
   config = loadCredentialsConfig()
-  val cmd  = new CommandLine(new WebRobotCliCommand())
-  val pctx = buildPluginContext(config)
+  val rootCmd = new WebRobotCliCommand()
+  val cmd     = new CommandLine(rootCmd)
+  val output  = new ConsoleOutputFormatter(System.out, "table")
+  val pctx    = buildPluginContext(config, output)
   CliPluginLoader.loadAll(cmd, pctx)
+
+  // Wrap the default execution strategy so the parsed root --output flag is
+  // applied to the shared OutputFormatter before any subcommand runs.
+  cmd.setExecutionStrategy(new picocli.CommandLine.IExecutionStrategy {
+    override def execute(parseResult: picocli.CommandLine.ParseResult): Int = {
+      output.setFormat(rootCmd.outputFormat)
+      new picocli.CommandLine.RunLast().execute(parseResult)
+    }
+  })
+
   val exitCode = cmd.execute(args: _*)
   sys.exit(exitCode)
 }

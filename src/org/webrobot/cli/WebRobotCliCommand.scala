@@ -1,6 +1,6 @@
 package org.webrobot.cli
 
-import picocli.CommandLine.Command
+import picocli.CommandLine.{Command, Option, ScopeType}
 import org.webrobot.cli.commands.{
   RunAdminCommand,
   RunAgentCommand,
@@ -20,6 +20,7 @@ import org.webrobot.cli.commands.{
   RunJobCommand,
   RunManifestCommand,
   RunPipelineCommand,
+  RunCliCommand,
   RunPluginCommand,
   RunProjectCommand,
   RunPythonExtCommand,
@@ -97,8 +98,10 @@ import org.webrobot.cli.commands.{
     classOf[RunEanCommand],
     // Pacchetti
     classOf[RunImportExportCommand],
-    // Plugin factory
+    // Plugin factory (scaffold partner plugin source trees)
     classOf[RunPluginCommand],
+    // CLI self-management (manage installed CLI plugin JARs)
+    classOf[RunCliCommand],
     // Config
     classOf[RunConfigCommand],
     // Browser locale (browser-use + camoufox)
@@ -106,6 +109,18 @@ import org.webrobot.cli.commands.{
   )
 )
 class WebRobotCliCommand extends Runnable {
+
+  /**
+   * Global output format flag inherited by all subcommands. Read by RunWebRobotCli
+   * after parsing and applied to the WebroCliContext's OutputFormatter.
+   */
+  @Option(
+    names  = Array("--output"),
+    scope  = ScopeType.INHERIT,
+    paramLabel = "FORMAT",
+    description = Array("Output format: table (default) | json | yaml")
+  )
+  var outputFormat: String = "table"
 
   override def run(): Unit = ()
 }

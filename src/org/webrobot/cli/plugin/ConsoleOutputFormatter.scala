@@ -12,20 +12,28 @@ import scala.collection.JavaConverters._
  * Console output formatter honoring the global --output flag.
  * Defaults to "table"; falls back to compact JSON when input doesn't suit a table.
  */
-final class ConsoleOutputFormatter(out: PrintStream, fmt: String) extends OutputFormatter {
+final class ConsoleOutputFormatter(out: PrintStream, initial: String) extends OutputFormatter {
 
   private val mapper      = new ObjectMapper()
   private val yamlMapper  = new ObjectMapper(new YAMLFactory())
   private val prettyJson  = mapper.writerWithDefaultPrettyPrinter()
   private val prettyYaml  = yamlMapper.writerWithDefaultPrettyPrinter()
 
-  private val fmtNorm = Option(fmt).map(_.toLowerCase).getOrElse("table") match {
+  @volatile private var fmtNorm: String = normalize(initial)
+
+  /** Set by the CLI host once the global --output flag has been parsed. */
+  def setFormat(s: String): Unit = fmtNorm = normalize(s)
+
+  private def normalize(s: String): String = Option(s).map(_.toLowerCase).getOrElse("table") match {
     case "json" => "json"
     case "yaml" => "yaml"
     case _      => "table"
   }
 
   override def table(rows: JsonNode): Unit = {
+    // Honor the global --output flag: if json/yaml selected, redirect there.
+    if (fmtNorm == "json") { json(rows); return }
+    if (fmtNorm == "yaml") { yaml(rows); return }
     if (rows == null || rows.isNull) { out.println("(empty)"); return }
     rows match {
       case arr: ArrayNode if arr.size() > 0 =>
