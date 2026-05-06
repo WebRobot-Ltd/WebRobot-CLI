@@ -10,13 +10,15 @@
     <packaging>jar</packaging>
     <properties>
         <revision>0.3.0-SNAPSHOT</revision>
-        <!-- Versione Maven dello SDK (Maven Central dopo pubblicazione; allinea al deploy SDK) -->
-        <webrobot.sdk.depversion>0.3.13-SNAPSHOT</webrobot.sdk.depversion>
+        <!-- SDK distribuito via JitPack (zero auth per i partner) — coord:
+             com.github.WebRobot-Ltd:webrobot-sdk:v<version>
+             Aggiorna quando esce un nuovo tag su WebRobot-Ltd/webrobot-sdk. -->
+        <webrobot.sdk.depversion>v0.3.14</webrobot.sdk.depversion>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
     </properties>
 
-    <!-- Risoluzione dipendenze: Maven Central (default). Nessun repository GitHub Packages. -->
+    <!-- Risoluzione dipendenze: Maven Central + JitPack. Nessun GitHub Packages. -->
 
     <repositories>
         <repository>
@@ -185,10 +187,10 @@
             <version>v0.2.0</version>
         </dependency>
 
-        <!-- webrobot.eu:org.webrobot.sdk — versione da GPR (proprietà webrobot.sdk.depversion) -->
+        <!-- WebRobot Java SDK (OpenAPI client + GenericClient facade) via JitPack -->
         <dependency>
-            <groupId>webrobot.eu</groupId>
-            <artifactId>org.webrobot.sdk</artifactId>
+            <groupId>com.github.WebRobot-Ltd</groupId>
+            <artifactId>webrobot-sdk</artifactId>
             <version>${webrobot.sdk.depversion}</version>
         </dependency>
 
