@@ -11,7 +11,7 @@
     <properties>
         <revision>0.3.0-SNAPSHOT</revision>
         <!-- Versione Maven dello SDK (Maven Central dopo pubblicazione; allinea al deploy SDK) -->
-        <webrobot.sdk.depversion>0.3.12</webrobot.sdk.depversion>
+        <webrobot.sdk.depversion>0.3.13-SNAPSHOT</webrobot.sdk.depversion>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
     </properties>
@@ -182,7 +182,7 @@
         <dependency>
             <groupId>com.github.WebRobot-Ltd</groupId>
             <artifactId>webrobot-cli-sdk</artifactId>
-            <version>v0.1.0</version>
+            <version>v0.2.0</version>
         </dependency>
 
         <!-- webrobot.eu:org.webrobot.sdk — versione da GPR (proprietà webrobot.sdk.depversion) -->
@@ -201,6 +201,11 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
+            <version>2.12.7</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
             <version>2.12.7</version>
         </dependency>
 
