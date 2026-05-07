@@ -9,21 +9,27 @@ import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 /**
  * Install a CLI plugin JAR into ~/.webrobot/plugins/.
  *
- * Three input formats accepted:
+ * Four input formats accepted:
  *   - local file:        webrobot cli plugins install ./target/foo.jar
  *   - HTTP(S) URL:       webrobot cli plugins install https://example.com/foo.jar
  *   - Maven coordinates: webrobot cli plugins install com.github.WebRobot-Ltd:webrobot-sentimental-plugin-cli:v0.1.0
+ *   - WebRobot platform: webrobot cli plugins install webrobot:sentimental-plugin-cli[@<version>]
  *
  * Maven coordinates are resolved against JitPack first, then Maven Central.
+ * The `webrobot:` scheme hits the platform's
+ * GET /webrobot/api/admin/bundles/cli-plugins/<pluginId>?version=<v> endpoint
+ * (Jersey side) which streams the CLI JAR shipped inside the latest approved
+ * bundle for that pluginId. Auth headers are added if the CLI has been
+ * configured with credentials (`webrobot config`).
  */
 @Command(
   name = "install",
-  description = Array("Install a CLI plugin JAR (local file, URL, or Maven coordinates).")
+  description = Array("Install a CLI plugin JAR (local file, URL, Maven coords, or webrobot:<pluginId>).")
 )
-class CliPluginsInstall extends Runnable {
+class CliPluginsInstall extends BaseSubCommand {
 
   @Parameters(paramLabel = "SOURCE",
-              description = Array("local jar path, http(s) URL, or groupId:artifactId:version"))
+              description = Array("local jar path, http(s) URL, groupId:artifactId:version, or webrobot:<pluginId>[@version]"))
   var source: String = _
 
   private val pluginsDir: Path = Paths.get(System.getProperty("user.home"), ".webrobot", "plugins")
@@ -31,10 +37,50 @@ class CliPluginsInstall extends Runnable {
   override def run(): Unit = {
     Files.createDirectories(pluginsDir)
     val target =
-      if (source.startsWith("http://") || source.startsWith("https://")) installFromUrl(source)
+      if (source.startsWith("webrobot:"))                                 installFromPlatform(source.substring("webrobot:".length))
+      else if (source.startsWith("http://") || source.startsWith("https://")) installFromUrl(source)
       else if (source.contains(":") && !new File(source).exists())        installFromCoordinates(source)
       else                                                                installFromFile(source)
     System.out.println(s"Installed: $target")
+  }
+
+  private def installFromPlatform(spec: String): Path = {
+    // Accept `pluginId` or `pluginId@version`
+    val (pluginId, versionOpt) = spec.split("@", 2) match {
+      case Array(p, v) => (p, Some(v))
+      case Array(p)    => (p, None)
+    }
+    init()  // wires apiClient() (auth headers + base URL) from BaseSubCommand
+    val base = {
+      val b = apiClient().getBasePath
+      if (b.endsWith("/")) b.dropRight(1) else b
+    }
+    val urlStr = s"$base/webrobot/api/admin/bundles/cli-plugins/${java.net.URLEncoder.encode(pluginId, "UTF-8")}" +
+      versionOpt.map(v => s"?version=${java.net.URLEncoder.encode(v, "UTF-8")}").getOrElse("")
+
+    val conn = new URL(urlStr).openConnection().asInstanceOf[HttpURLConnection]
+    conn.setRequestMethod("GET")
+    conn.setInstanceFollowRedirects(true)
+    conn.setConnectTimeout(15000)
+    conn.setReadTimeout(120000)
+    val ah = apiClient().getApiKey
+    if (ah != null && ah.nonEmpty) conn.setRequestProperty("Authorization", s"Bearer $ah")
+
+    val sc = conn.getResponseCode
+    if (sc / 100 != 2) {
+      val errMsg = try {
+        new String(conn.getErrorStream.readAllBytes(), "UTF-8")
+      } catch { case _: Throwable => "" }
+      conn.disconnect()
+      throw new RuntimeException(s"HTTP $sc on $urlStr — $errMsg")
+    }
+    val resolvedVersion = Option(conn.getHeaderField("X-Plugin-Version")).getOrElse(versionOpt.getOrElse("latest"))
+    val name = s"$pluginId-$resolvedVersion.jar"
+    val dst  = pluginsDir.resolve(name)
+    val in   = conn.getInputStream
+    try Files.copy(in, dst, StandardCopyOption.REPLACE_EXISTING)
+    finally { in.close(); conn.disconnect() }
+    dst
   }
 
   private def installFromFile(path: String): Path = {
