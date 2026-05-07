@@ -22,6 +22,7 @@ import org.webrobot.cli.commands.{
   RunPipelineCommand,
   RunCliCommand,
   RunPluginCommand,
+  RunBundleCommand,
   RunProjectCommand,
   RunPythonExtCommand,
   RunTaskCommand,
@@ -100,6 +101,8 @@ import org.webrobot.cli.commands.{
     classOf[RunImportExportCommand],
     // Plugin factory (scaffold partner plugin source trees)
     classOf[RunPluginCommand],
+    // Plugin bundle distribution (package + upload aggregate ZIP)
+    classOf[RunBundleCommand],
     // CLI self-management (manage installed CLI plugin JARs)
     classOf[RunCliCommand],
     // Config
