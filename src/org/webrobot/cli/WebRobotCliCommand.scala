@@ -9,6 +9,7 @@ import org.webrobot.cli.commands.{
   RunBillingCommand,
   RunBrowserCommand,
   RunCategoryCommand,
+  RunCloudAdapterCommand,
   RunCloudCommand,
   RunCloudCredentialsCommand,
   RunConfigCommand,
@@ -103,6 +104,8 @@ import org.webrobot.cli.commands.{
     classOf[RunPluginCommand],
     // Plugin bundle distribution (package + upload aggregate ZIP)
     classOf[RunBundleCommand],
+    // Cloud-provider VM-adapter management (list + status)
+    classOf[RunCloudAdapterCommand],
     // CLI self-management (manage installed CLI plugin JARs)
     classOf[RunCliCommand],
     // Config
