@@ -118,6 +118,23 @@ class PipelineStagesDescribeCommand extends BaseSubCommand {
           System.out.println(s"\n${ANSI_BOLD}Esempio YAML:${ANSI_RESET}\n")
           ex.toString.linesIterator.foreach(line => System.out.println("  " + line))
         }
+
+        // Marketplace pricing info — present only for paid plugin stages.
+        s.get("pricing") match {
+          case Some(p: java.util.Map[_, _]) =>
+            val pm = p.asInstanceOf[java.util.Map[String, Object]]
+            val unit = Option(pm.get("price_unit")).map(_.toString).getOrElse("free")
+            if (!"free".equalsIgnoreCase(unit)) {
+              val amountCents = Option(pm.get("price_amount")).map(_.toString.toLong).getOrElse(0L)
+              val currency    = Option(pm.get("price_currency")).map(_.toString.toUpperCase).getOrElse("EUR")
+              val amountStr   = f"${amountCents / 100.0}%.2f"
+              System.out.println(s"\n${ANSI_BOLD}Pricing:${ANSI_RESET}     $currency $amountStr · $unit")
+              Option(pm.get("metering_field")).foreach { mf =>
+                System.out.println(s"             metering: $mf")
+              }
+            }
+          case _ => ()
+        }
     }
     System.out.println()
   }

@@ -77,6 +77,9 @@ object StageCatalog {
         if (item.has("arg_schema")) m("args")       = mapper.convertValue(item.get("arg_schema"), classOf[java.util.List[AnyRef]])
         if (item.has("usage_guide") && !item.get("usage_guide").isNull)
                                     m("example")    = item.get("usage_guide").asText("")
+        // Marketplace pricing (optional — only present for paid plugins)
+        if (item.has("pricing") && !item.get("pricing").isNull)
+                                    m("pricing")    = mapper.convertValue(item.get("pricing"), classOf[java.util.Map[String, AnyRef]])
         m.toMap
       }.toList
 
