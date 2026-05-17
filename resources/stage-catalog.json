@@ -137,6 +137,31 @@
       "example": "- stage: intelligent_join\n  args: [\"auto\", \"click product link\", 20]"
     },
     {
+      "name": "intelligent_wget_explore",
+      "aliases": ["intelligentWgetExplore"],
+      "extensionType": "transformation",
+      "category": "intelligent",
+      "description": "Like intelligent_explore but uses HTTP-only (Wget) fetching instead of the browser. For static SERPs where the LLM doesn't need a JS-rendered DOM.",
+      "args": [
+        { "name": "prompt", "type": "string", "required": true, "description": "Natural language description of target links" },
+        { "name": "depth", "type": "int", "required": false, "description": "Maximum depth (default: 1)" },
+        { "name": "maxLinks", "type": "int", "required": false, "description": "Cap on links per parent row" }
+      ],
+      "example": "- stage: intelligent_wget_explore\n  args: [\"next page link at the bottom of the catalogue\", 1, 10]"
+    },
+    {
+      "name": "intelligent_wget_join",
+      "aliases": ["intelligentWgetJoin"],
+      "extensionType": "transformation",
+      "category": "intelligent",
+      "description": "Like intelligent_join but uses HTTP-only (Wget) fetching for detail pages instead of the browser. Big cost win on static detail pages.",
+      "args": [
+        { "name": "selectorPrompt", "type": "string", "required": false, "description": "Selector prompt or 'auto'" },
+        { "name": "limit", "type": "int", "required": false, "description": "Maximum rows to join" }
+      ],
+      "example": "- stage: intelligent_wget_join\n  args: [\"the link to each book detail page\", 10]"
+    },
+    {
       "name": "iextract",
       "extensionType": "transformation",
       "category": "intelligent",
