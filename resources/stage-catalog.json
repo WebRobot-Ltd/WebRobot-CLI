@@ -568,6 +568,17 @@
       "description": "Find arbitrage opportunities in betting odds data",
       "args": [],
       "example": "- stage: surebetFinder\n  args: []"
+    },
+    {
+      "name": "sql_query",
+      "aliases": ["sql"],
+      "extensionType": "transformation",
+      "category": "analytics",
+      "description": "Execute an arbitrary Spark SQL query against the current dataset (registered as temp view 'df'). Returns the query result as the new pipeline dataset.",
+      "args": [
+        { "name": "query", "type": "string", "required": true, "description": "Spark SQL query. The inbound dataset is available as table 'df'. All columns are StringType." }
+      ],
+      "example": "- stage: sql_query\n  args: [\"SELECT era, COUNT(*) AS count FROM df GROUP BY era ORDER BY count DESC\"]"
     }
   ],
   "actions": [
