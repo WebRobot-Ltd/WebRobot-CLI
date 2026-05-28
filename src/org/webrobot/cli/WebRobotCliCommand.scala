@@ -14,7 +14,6 @@ import org.webrobot.cli.commands.{
   RunCloudCredentialsCommand,
   RunConfigCommand,
   RunDatasetCommand,
-  RunDatasetLegacyCommand,
   RunEanCommand,
   RunExecutionCommand,
   RunImportExportCommand,
@@ -22,6 +21,7 @@ import org.webrobot.cli.commands.{
   RunManifestCommand,
   RunPipelineCommand,
   RunCliCommand,
+  RunDemoCommand,
   RunPluginCommand,
   RunBundleCommand,
   RunProjectCommand,
@@ -47,12 +47,13 @@ import org.webrobot.cli.commands.{
     "  Wizard:            wizard agent | wizard pipeline",
     "  Manifest:          manifest | pipeline",
     "  ETL Core:          project | category | agent | job | task | execution",
-    "  Dati:              dataset | datasets-legacy | cloud-credentials",
+    "  Dati:              dataset | cloud-credentials",
     "  Identità & accesso:auth | billing",
     "  Infrastruttura:    cloud | admin",
     "  AI & estensioni:   ai-providers | python-ext",
     "  EAN sourcing:      ean info | ean status | ean upload | ean execute | ean query | ean images",
     "  Plugin factory:    plugin new | plugin add stage | plugin add resolver | plugin add action",
+    "  Demo pubblico:     demo list | demo execute <name> --follow | demo status|logs|output <id> | demo upload-dataset",
     "  Pacchetti:         package",
     "  Configurazione:    config show | config set | config init",
     "  Browser locale:    browser status",
@@ -85,7 +86,6 @@ import org.webrobot.cli.commands.{
     classOf[RunExecutionCommand],
     // Dati
     classOf[RunDatasetCommand],
-    classOf[RunDatasetLegacyCommand],
     classOf[RunCloudCredentialsCommand],
     // Identità & accesso
     classOf[RunAuthCommand],
@@ -111,7 +111,9 @@ import org.webrobot.cli.commands.{
     // Config
     classOf[RunConfigCommand],
     // Browser locale (browser-use + camoufox)
-    classOf[RunBrowserCommand]
+    classOf[RunBrowserCommand],
+    // Demo plugin pubblico (/webrobot/api/demo/* — no auth)
+    classOf[RunDemoCommand]
   )
 )
 class WebRobotCliCommand extends Runnable {
