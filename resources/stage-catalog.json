@@ -579,6 +579,46 @@
         { "name": "query", "type": "string", "required": true, "description": "Spark SQL query. The inbound dataset is available as table 'df'. All columns are StringType." }
       ],
       "example": "- stage: sql_query\n  args: [\"SELECT era, COUNT(*) AS count FROM df GROUP BY era ORDER BY count DESC\"]"
+    },
+    {
+      "name": "rag_ingest",
+      "extensionType": "sink",
+      "category": "rag",
+      "description": "Bulk-upsert the current DataFrame into a RAG index (LlamaCloud or Weaviate). Credentials are taken from cloud_credentials for the org. Passthrough for the upstream DataFrame.",
+      "args": [
+        { "name": "config", "type": "map", "required": true, "description": "{ provider: llamacloud|weaviate, index_name: <name>, text_column: <col>, id_column?: <col>, metadata_columns?: csv|list, batch_size?: int }" }
+      ],
+      "example": "- stage: rag_ingest\n  args:\n    - provider: llamacloud\n      index_name: webrobot_kb\n      project_name: webrobot\n      text_column: content\n      id_column: url\n      metadata_columns: title,author,scraped_at,source_url\n      batch_size: 100"
+    },
+    {
+      "name": "rag_query",
+      "extensionType": "transformation",
+      "category": "rag",
+      "description": "For each row, run a RAG semantic search and append the top-k hits as a JSON column. Useful to enrich scraped rows with related knowledge-base entries.",
+      "args": [
+        { "name": "config", "type": "map", "required": true, "description": "{ provider, index_name, question_column, top_k?, output_column?, filter_<k>?: <v>... }" }
+      ],
+      "example": "- stage: rag_query\n  args:\n    - provider: llamacloud\n      index_name: webrobot_kb\n      question_column: article_summary\n      top_k: 5\n      output_column: similar_articles\n      filter_category: news"
+    },
+    {
+      "name": "rag_dedup",
+      "extensionType": "transformation",
+      "category": "rag",
+      "description": "Drop (or tag) rows whose top-1 similarity against the RAG index exceeds a threshold. Used for re-scrape pipelines to skip already-ingested content.",
+      "args": [
+        { "name": "config", "type": "map", "required": true, "description": "{ provider, index_name, text_column, similarity_threshold?, on_match?: drop|tag, match_column?: <col> }" }
+      ],
+      "example": "- stage: rag_dedup\n  args:\n    - provider: llamacloud\n      index_name: webrobot_kb\n      text_column: content\n      similarity_threshold: 0.92\n      on_match: drop"
+    },
+    {
+      "name": "rag_index_stats",
+      "extensionType": "sink",
+      "category": "rag",
+      "description": "Replace the current dataset with a single-row metrics snapshot of the RAG index. Useful as a final stage for index-health dashboards.",
+      "args": [
+        { "name": "config", "type": "map", "required": true, "description": "{ provider, index_name }" }
+      ],
+      "example": "- stage: rag_index_stats\n  args:\n    - provider: llamacloud\n      index_name: webrobot_kb"
     }
   ],
   "actions": [
