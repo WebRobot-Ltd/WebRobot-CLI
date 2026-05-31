@@ -276,7 +276,7 @@
       "name": "sentiment",
       "extensionType": "transformation",
       "category": "analytics",
-      "description": "Simple lexicon-based sentiment analysis; adds sentiment and count columns",
+      "description": "LLM-based sentiment + named-entity analysis (calls Groq when GROQ_API_KEY is present, else a small IT/EN lexicon fallback); adds polarity, sentiment score, entities columns",
       "args": [
         { "name": "textField", "type": "string", "required": false, "description": "Text field name (default: message)" }
       ],
