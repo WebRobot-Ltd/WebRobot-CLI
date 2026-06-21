@@ -276,7 +276,7 @@
       "name": "sentiment",
       "extensionType": "transformation",
       "category": "analytics",
-      "description": "LLM-based sentiment + named-entity analysis (calls Groq when GROQ_API_KEY is present, else a small IT/EN lexicon fallback); adds polarity, sentiment score, entities columns",
+      "description": "LLM-based sentiment + named-entity analysis (calls Groq when GROQ_API_KEY is present, else a small IT/EN lexicon fallback). Adds EXACTLY these columns: `sentiment` (numeric score), `polarity` (positive|negative|neutral), `entities`, `count` (=1). It does NOT create <field>_sentiment_score or <field>_sentiment_label — referencing those fails with UNRESOLVED_COLUMN.",
       "args": [
         { "name": "textField", "type": "string", "required": false, "description": "Text field name (default: message)" }
       ],
